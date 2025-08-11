@@ -1,0 +1,133 @@
+.navalign{
+    background-color: blueviolet;
+    color: azure;
+    display: inline-flex;
+    width: 100%;
+    height: 25%;
+    padding: 1%;
+}
+.navalign div, .navalign input{
+    margin-right:1%;
+}
+.nav-right{
+    display: inline-flex;
+}
+.bg-blue-900{
+    background-color: blueviolet;
+    color: azure;
+    font-size: 14px;
+    padding: 18px;
+}
+.bg-blue-900 span, .bg-blue-900 i, .bg-blue-900 a, .bg-blue-900 Link{
+    /* padding: 10%; */
+    color: azure;
+    cursor: pointer;
+    list-style-type: none;
+    text-decoration: none; 
+}
+.large-screen{
+    display:block !important;
+}
+.small-screen{
+    display:none !important;
+}
+/* this is needed to make the content scrollable on larger screens */
+@media (max-width: 576px) {
+    .navalign .right-element{
+        display:none !important;
+    }
+    .navalign div input{
+        float: right;
+    }
+    .large-screen{
+        display: none !important;
+    }
+    .small-screen{
+        display:block !important;
+    }
+    .backpurple-200{
+    background-color: blueviolet;
+    color: azure;
+    font-size: 20px;
+}
+}
+@media (min-width: 576px) {
+    .h-sm-100 {
+        height: 100%;
+    }
+}
+.schedule-grid, .schedule-grid-row {
+  display: grid;
+  grid-template-columns: 150px repeat(14, 1fr);
+  gap: 1px;
+  background-color: #dee2e6;
+}
+
+.header-row {
+  display: contents;
+}
+
+.header-cell {
+  background-color: #f8f9fa;
+  padding: 8px;
+  text-align: center;
+  font-weight: bold;
+  border: 1px solid #ced4da;
+}
+
+.row-body {
+  display: contents;
+}
+
+.cell {
+  background-color: white;
+  padding: 8px;
+  border: 1px solid #dee2e6;
+  min-height: 60px;
+  /* position: relative; */
+}
+
+.employee-cell {
+  background-color: #f1f3f5;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+}
+
+.appointment {
+  color: white;
+  font-size: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.empty-cell {
+  background-color: #f8f9fa;
+  display: flex;
+}
+
+.outermodal{
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.inmodal{
+  background: white;
+  max-height: 70vh;
+  width: 60%;
+  margin: auto;
+  padding: 2%;
+  border: 2px solid #000;
+  border-radius: 10px;
+  box-shadow: 2px solid black;
+  color: black;
+  overflow-y: scroll;
+}
