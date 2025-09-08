@@ -5,6 +5,7 @@ import './styledashboard.css';
 import Modal from './editModal.js';
 import { Form, Button, Row, Col, InputGroup } from 'react-bootstrap';
 
+
 export default function SchedulePage() {
   const [scheduleData, setScheduleData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -185,7 +186,7 @@ export default function SchedulePage() {
             ))}
           </div>
           {scheduleData.employee.map((emp, rowIndex) => (
-            <div className='row-body'>
+            <div className={emp.status === "Available" ? "row-body" : "d-none"}>
               <div className='cell employee-cell'>{emp.first_name}</div>
               <div key={rowIndex} className="row-body">
                 {hours.map((hour, colIndex) => {

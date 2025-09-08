@@ -30,7 +30,11 @@ export default function Register() {
         ...form,
         age: form.age ? Number(form.age) : undefined,
       };
-      const res = await fetch("http://127.0.0.1:5000/register", payload);
+      const res = await fetch("http://127.0.0.1:5000/register",{method:"POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(payload)});
       setOk(true);
       setMsg(res.message || "Registered successfully");
     } catch (err) {
@@ -42,6 +46,7 @@ export default function Register() {
   }
 
   return (
+    <div className="container-fluid">
     <form className="form" onSubmit={onSubmit}>
       <h1 className="title">Create an account</h1>
       <p className="subtitle">Add employee details to continue</p>
@@ -172,5 +177,6 @@ export default function Register() {
         </div>
       )}
     </form>
+    </div>
   );
 }

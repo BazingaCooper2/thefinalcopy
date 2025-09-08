@@ -1,100 +1,90 @@
-import React, { useState } from 'react';
+// frontend/src/pages/Login.jsx
+import { useState } from "react";
+//import { postJSON } from "../api";
 
-function Login() {
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
-    const [error, setError] = useState('');
+export default function Login() {
+  const [employeeId, setEmployeeId] = useState("");
+  const [password, setPassword] = useState("");
+  const [msg, setMsg] = useState("");
+  const [ok, setOk] = useState(false);
+  const [busy, setBusy] = useState(false);
 
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        setError('');
-        if (email === 'admin@example.com' && password === 'password') {
-            alert('Login successful!');
-        } else {
-            setError('Invalid email or password');
+  async function onSubmit(e) {
+    e.preventDefault();
+    setMsg("");
+    setOk(false);
+    setBusy(true);
+    try {
+        const payload = {
+            employeeId,
+            password
         }
-    };
-
-    return (
-        <div style={styles.container}>
-            <form onSubmit={handleSubmit} style={styles.form}>
-                <h2 style={styles.title}>Sign in</h2>
-                {error && <div style={styles.error}>{error}</div>}
-                <input
-                    type="email"
-                    placeholder="Email"
-                    value={email}
-                    onChange={e => setEmail(e.target.value)}
-                    required
-                    style={styles.input}
-                    autoFocus
-                />
-                <input
-                    type="password"
-                    placeholder="Password"
-                    value={password}
-                    onChange={e => setPassword(e.target.value)}
-                    required
-                    style={styles.input}
-                />
-                <button type="submit" style={styles.button}>Login</button>
-            </form>
-        </div>
-    );
-}
-
-const styles = {
-    container: {
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: '#f8fafc'
-    },
-    form: {
-        background: '#fff',
-        padding: '2rem',
-        borderRadius: '10px',
-        boxShadow: '0 2px 16px rgba(0,0,0,0.06)',
-        minWidth: 300,
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '1rem'
-    },
-    title: {
-        margin: 0,
-        marginBottom: '1rem',
-        fontWeight: 600,
-        fontSize: '1.5rem',
-        color: '#222'
-    },
-    input: {
-        padding: '0.75rem 1rem',
-        borderRadius: '6px',
-        border: '1px solid #e0e0e0',
-        fontSize: '1rem',
-        outline: 'none',
-        transition: 'border 0.2s',
-        background: '#f9f9f9'
-    },
-    button: {
-        padding: '0.75rem 1rem',
-        background: '#1976d2',
-        color: '#fff',
-        border: 'none',
-        borderRadius: '6px',
-        fontWeight: 600,
-        fontSize: '1rem',
-        cursor: 'pointer',
-        transition: 'background 0.2s'
-    },
-    error: {
-        color: '#d32f2f',
-        background: '#fff0f0',
-        borderRadius: '4px',
-        padding: '0.5rem 1rem',
-        fontSize: '0.95rem'
+      const res = await fetch("http://127.0.0.1:5000/login", {
+        method: "POST",
+         headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(payload)
+      });
+      setOk(true);
+      setMsg(res.message || "Login successful");
+    } catch (err) {
+      setOk(false);
+      setMsg(err.message || "Login failed");
+    } finally {
+      setBusy(false);
     }
-};
+  }
 
-export default Login;
+  return (
+    <div className="container-fluid">
+    <form className="form" onSubmit={onSubmit}>
+      <h1 className="title">Welcome back</h1>
+      <p className="subtitle">Sign in with employee credentials</p>
+
+      <div className="field">
+        <label className="label" htmlFor="employee_id">Employee ID</label>
+        <input
+          id="employee_id"
+          className="input"
+          value={employeeId}
+          onChange={(e) => setEmployeeId(e.target.value)}
+          placeholder="e.g. EMP12345"
+          required
+          autoComplete="username"
+        />
+      </div>
+
+      <div className="field">
+        <label className="label" htmlFor="password">Password</label>
+        <input
+          id="password"
+          className="input"
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder="••••••••"
+          required
+          autoComplete="current-password"
+        />
+        <span className="helper">Use the password set during registration</span>
+      </div>
+
+      <div className="actions">
+        <button className="btn btn-ghost" type="button" onClick={() => { setEmployeeId(""); setPassword(""); }}>
+          Clear
+        </button>
+        <button className="btn btn-primary" type="submit" disabled={busy}>
+          {busy ? "Signing in..." : "Sign in"}
+        </button>
+      </div>
+
+      {msg && (
+        <div className={`message ${ok ? "success" : "error"}`} role="status" aria-live="polite">
+          {msg}
+        </div>
+      )}
+    </form>
+    </div>
+  );
+}
