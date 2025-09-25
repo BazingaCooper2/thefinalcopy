@@ -1,86 +1,465 @@
-import React, { useEffect, useState } from 'react';
-import axios from 'axios';
+import React, { use, useEffect, useState } from "react";
+import OverlayTrigger from "react-bootstrap/OverlayTrigger";
+import Tooltip from "react-bootstrap/Tooltip";
+import "./SchedulePage.css";
 import 'bootstrap/dist/css/bootstrap.min.css';
 import './styledashboard.css';
+import Modal from './editModal.js';
+import { Form, Button, Row, Col, InputGroup } from 'react-bootstrap';
+
+/**
+ * SchedulePage
+ * - Calls the API (expects JSON with client, employee, shift, daily_shift arrays)
+ * - Builds per-employee data for a selected date
+ * - Renders: Header (hours) + for each employee: 2 rows (shifts, appointments)
+ * - Timeline resolution: minutes (1 grid column = 1 minute)
+ */
+
+const toMinutesOfDay = (timeStr) => {
+  // timeStr expected like "YYYY-MM-DD HH:MM:SS" or "HH:MM:SS"
+  const timePart = timeStr.includes(" ") ? timeStr.split(" ")[1] : timeStr;
+  const [hh, mm] = timePart.split(":").map((n) => parseInt(n, 10));
+  return hh * 60 + mm;
+};
+
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
 export default function SchedulePage() {
-  const [scheduleData, setScheduleData] = useState(null);
+  const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [empltrue, setEmpltrue] = useState(true);
+  const [clttrue, setClttrue] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [clid, setClient] = useState(0);
+  const [sid, setShift] = useState(0);
+  const [empid, setEmp] = useState(0);
+  const [empl, setEmpl] = useState(null);
+  const [shift_ptr_start, setShiftptrstart] = useState(null);
+  const [shift_ptr_end, setShiftptrend] = useState(null);
+  const [message, setMessage] = useState("");
+  const [formData, setFormData] = useState({
+    shift_id: "",
+    client_id: "",
+    emp_id: "",
+    shift_start_time: "",
+    shift_end_time: "",
+    shift_status: "",
+    Shift_Date: "",
+    Task_ID: "",
+    Skills: "",
+    Service_Instructions: "",
+    Tags: "",
+    Use_Service_Duration: "",
+    Forms: "",
+  });
+
+  const [currentDate, setCurrentDate] = useState(new Date("09-25-2025"));
+
+  // Optional: Update time every minute
+  // useEffect(() => {
+  //   const interval = setInterval(() => {
+  //     setCurrentDate(new Date());
+  //   }, 60000);
+  //   return () => clearInterval(interval);
+  // }, []);
+
+  const handleClose = () => {
+    if (open) {
+      setOpen(false);
+      setClient(0);
+    }
+  };
+
+  const handleOpen = (c, eid, empl, shift_ptr) => {
+    console.log(!open);
+    if (!open) {
+      setOpen(true);
+      console.log(open);
+      if (c !== 0) {
+        setClient(c);
+      }
+      if (eid !== 0) {
+        setEmp(eid);
+      }
+      if (empl) {
+        setEmpl(empl);
+      }
+      if (shift_ptr.shift_id){
+        setShift(shift_ptr.shift_id);
+      }
+      if (shift_ptr.shift_start_time) {
+        const [day, month, rest] = shift_ptr.shift_start_time.split("-");
+        const [year, time] = rest.split(" "); 
+        var start_time= `${year}-${month}-${day}T${time}`;
+        setShiftptrstart(start_time);
+        //console.log(shift_ptr_start);
+      }
+      if (shift_ptr.shift_end_time) {
+        const [day, month, rest] = shift_ptr.shift_end_time.split("-");
+        const [year, time] = rest.split(" "); 
+        var end_time= `${year}-${month}-${day}T${time}`;
+        setShiftptrend(end_time);
+      }
+    }
+  };
+
+  const handleChange = (e) => {
+    if (e) {
+      setFormData({ ...formData, [e.target.name]: e.target.value });
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    if (clid !== 0) {
+      formData.client_id = clid;
+    }
+    if (empid !== 0) {
+      formData.emp_id = empid;
+    }
+    if (sid !== 0) {
+      formData.shift_id = sid;
+    }
+    console.log(JSON.stringify(formData));
+    e.preventDefault(); // Prevent page refresh
+
+    try {
+      const res = await fetch("http://127.0.0.1:5000/submit", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(formData)
+      });
+
+      if (!res.ok) {
+        throw new Error("API request failed");
+      }
+
+      const data = await res.json();
+      setMessage("Form submitted successfully");
+      console.log("API response:", data);
+      handleClose();
+      //fetchSchedule();
+    } catch (err) {
+      console.error(err);
+      setMessage("Error submitting form");
+    }
+  };
+  const clschedule = () => {
+    setEmpltrue(false);
+    setClttrue(true);
+  };
+
+  const empschedule = () => {
+    setEmpltrue(true);
+    setClttrue(false);
+  };
+
+
+  // fixed timeline range — change if needed
+  const startHour = 6;
+  const endHour = 23;
+  const totalMinutes = (endHour - startHour) * 60; // e.g. 6->22 = 16*60 = 960
 
   useEffect(() => {
-    const fetchSchedule = async () => {
-      try {
-        const response = await fetch(`http://127.0.0.1:5000/`); // Replace with your API endpoint
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        const data = await response.json();
-        console.log(data);
-        setScheduleData(data);
-      } catch (err) {
-        setError(err);
-      } finally {
-        setLoading(false);
+    fetch("http://127.0.0.1:5000/scheduled") // adjust endpoint as needed
+      .then((r) => r.json())
+      .then((json) => {
+        setData(json);
+        // choose a default date: try to pick first daily_shift date if present
+        const ds = json?.daily_shift;
+        console.log(currentDate);
+        if (ds && ds.length) setCurrentDate('25-09-2025');
+        else setCurrentDate(new Date().toISOString().slice(0, 10));
+      })
+      .catch((err) => console.error(err));
+  }, []);
+
+  if (!data || !currentDate) return <div>Loading schedule...</div>;
+
+  // map clients by id for quick lookup
+  const clientsMap = (data.client || []).reduce((m, c) => {
+    m[c.client_id] = c;
+    return m;
+  }, {});
+
+  // Build per-employee grouped data for the currentDate
+  const employees = (data.employee || []).filter((emp) => emp.status === "Available")
+    .map((emp) => {
+      const shifts = (data.daily_shift || []).filter(
+        (ds) => ds.emp_id === emp.emp_id && ds.shift_date === currentDate
+      );
+
+      const appointments = (data.shift || []).filter(
+        (s) => s.emp_id === emp.emp_id && s.date === currentDate
+      ).map(s => ({ ...s, client: clientsMap[s.client_id] || null }));
+
+      return {
+        ...emp,
+        shifts,
+        appointments,
+      };
+    });
+
+  // Helper: given sorted items, create segments (gap / item) to render efficiently
+  const buildSegments = (items) => {
+    // items expected to have shift_start_time, shift_end_time
+    const segs = [];
+    if (!items || items.length === 0) {
+      segs.push({ type: "empty", span: totalMinutes });
+      return segs;
+    }
+
+    // sort by start minute
+    const sorted = items
+      .map((it) => {
+        const start = toMinutesOfDay(it.shift_start_time);
+        const end = toMinutesOfDay(it.shift_end_time);
+        return { ...it, _startMin: start, _endMin: end };
+      })
+      .sort((a, b) => a._startMin - b._startMin);
+
+    let cursor = startHour * 60; // absolute minutes in day
+    for (let i = 0; i < sorted.length; i++) {
+      const it = sorted[i];
+      // compute indexes relative to startHour
+      const relStart = clamp(it._startMin - startHour * 60, 0, totalMinutes);
+      const relEnd = clamp(it._endMin - startHour * 60, 0, totalMinutes);
+
+      // empty gap before this item
+      const gap = relStart - (cursor - startHour * 60);
+      if (gap > 0) {
+        segs.push({ type: "empty", span: gap });
       }
-    };
 
-    fetchSchedule();
-  }, []); // Empty dependency array ensures this runs once on mount
+      // item span (ensure positive)
+      const span = relEnd - relStart;
+      if (span > 0) {
+        segs.push({ type: "item", span, item: it });
+      }
 
-  if (loading) return <div>Loading schedule...</div>;
-  if (error) return <div>Error: {error.message}</div>;
-
-  /*return (
-    <div>
-      <h1>Schedule</h1>
-      <pre>{JSON.stringify(scheduleData, null, 2)}</pre> 
-    </div>
-  );*/
-  const hours = Array.from({ length: 14 }, (_, i) => 6 + i); // 06 to 19
-  
-  const employees = ['Lincoln Bartlett', 'Amelia Harper', 'Stu Pizaro', 'Lucy Ball'];
-  const timeSlots = ['08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00'];
-  const groupedStartTimes = scheduleData.shift.reduce((acc, shift) => {
-    const empId = shift.emp_id;
-    const startTime = shift.shift_start_time;
-    if (!acc[empId]) {
-      acc[empId] = [];
+      // move cursor
+      cursor = it._endMin;
     }
-    acc[empId].push(startTime);
-    return acc;
-  }, {});
-  const groupedDurationTimes = scheduleData.shift.reduce((acc, shift) => {
-    const empId = shift.emp_id;
-    const startTime = shift.shift_start_time;
-    const endTime = shift.shift_end_time;
-    if (!acc[empId]) {
-      acc[empId] = [];
-    }
-    acc[empId].push(endTime-startTime);
-    return acc;
-  }, {});
 
-  const data = scheduleData;
+    // trailing gap
+    const consumed = segs.reduce((s, seg) => s + seg.span, 0);
+    const remain = totalMinutes - consumed;
+    if (remain > 0) segs.push({ type: "empty", span: remain });
 
+    return segs;
+  };
 
-const appointments = [
-  { employee: 'Lincoln Bartlett', time: '09:00', duration: 2, title: 'Andrew Glover', type: 'Hospital', color: 'bg-primary' },
-  { employee: 'Amelia Harper', time: '09:00', duration: 1, title: 'Addison Davis', type: 'Hospital', color: 'bg-danger' },
-  { employee: 'Stu Pizaro', time: '09:00', duration: 2, title: 'Follow-up Checkup', type: 'Medical', color: 'bg-warning' },
-  { employee: 'Lucy Ball', time: '09:00', duration: 1, title: 'Isabella Carter', type: 'Home', color: 'bg-danger' },
-  { employee: 'Lincoln Bartlett', time: '12:00', duration: 2, title: 'Mark Oliver', type: 'Hospital', color: 'bg-success' },
-];
+  const renderSegments = (segments, kind) =>
+    segments.map((seg, idx) => {
+      if (seg.type === "empty") {
+        return (
+          <div
+            key={`empty-${kind}-${idx}`}
+            className="empty-cell"
+            style={{ gridColumn: `span ${seg.span}` }}
+          />
+        );
+      } else {
+        const it = seg.item;
+        const startMin = toMinutesOfDay(it.shift_start_time);
+        const endMin = toMinutesOfDay(it.shift_end_time);
+
+        const startH = Math.floor(startMin / 60);
+        const startM = startMin % 60;
+        const endH = Math.floor(endMin / 60);
+        const endM = endMin % 60;
+        if (open) {
+          return (
+            <Modal isOpen={open} onClose={handleClose}>
+              <div className="container mt-4 border p-4 bg-white rounded shadow-sm">
+                <h5>Edit Visit</h5>
+                <Row>
+                  {/* Left Side Form */}
+                  <Col md={6}>
+                    <Form onSubmit={handleSubmit}>
+                      <Form.Group controlId="visitId">
+                        <Form.Label><strong>Visit ID: {sid} - Details</strong></Form.Label>
+                      </Form.Group>
+
+                      <Form.Group className="mb-3" controlId="client">
+                        <Form.Label>Client *</Form.Label>
+                        <Form.Control type="text" disabled defaultValue={clid} name='client_id' onChange={handleChange} />
+                      </Form.Group>
+
+                      <Form.Group className="mb-3" controlId="clientService">
+                        <Form.Label>Client Services *</Form.Label>
+                        <InputGroup>
+                          <Form.Control type="text" defaultValue="" name='service_type' onChange={handleChange} />
+                          <Button variant="info">Chosen</Button>
+                        </InputGroup>
+                      </Form.Group>
+
+                      <Form.Group className="mb-3" controlId="serviceCode">
+                        <Form.Label>Service Code *</Form.Label>
+                        <Form.Control type="text" defaultValue="ASW - 87 Neeve" name='service_code' onChange={handleChange} />
+                      </Form.Group>
+
+                      <Form.Group className="mb-3" controlId="employee">
+                        <Form.Label>Assign to Employee</Form.Label>
+                        <InputGroup>
+                          <Form.Control type="text" defaultValue={it.name} name='first_name' onChange={handleChange} />
+                          <Button variant="secondary">Find Employee</Button>
+                        </InputGroup>
+                        <small className="text-muted">⚠️ Employees are filtered by department: ALS</small>
+                      </Form.Group>
+
+                      <Row>
+                        <Col>
+                          <Form.Group className="mb-3" controlId="activityCode">
+                            <Form.Label>Activity Code</Form.Label>
+                            <Form.Control type="text" placeholder="Type to add activity" name='Task_ID' onChange={handleChange} />
+                          </Form.Group>
+                        </Col>
+                        <Col>
+                          <Form.Group className="mb-3" controlId="forms">
+                            <Form.Label>Forms</Form.Label>
+                            <Form.Control type="text" placeholder="Type to add forms" name='Forms' onChange={handleChange} />
+                          </Form.Group>
+                        </Col>
+                      </Row>
+
+                      <Form.Group className="mb-3" controlId="skills">
+                        <Form.Label>Skills</Form.Label>
+                        <Form.Control type="text" placeholder="Type to add skills" name='Skills' onChange={handleChange} />
+                      </Form.Group>
+
+                      <Form.Group className="mb-3" controlId="instructions">
+                        <Form.Label>Service Instructions</Form.Label>
+                        <Form.Control as="textarea" rows={2} name='Service_Instructions' onChange={handleChange} />
+                      </Form.Group>
+
+                      <Form.Group controlId="tags">
+                        <Form.Label>Tags</Form.Label>
+                        <Button variant="outline-secondary" name='Tags' size="sm"> + </Button>
+                      </Form.Group>
+                    </Form>
+                  </Col>
+
+                  {/* Right Side Scheduling */}
+                  <Col md={6}>
+                    <Form.Group className="mb-3" controlId="scheduling">
+                      <Form.Label><strong>Scheduling</strong></Form.Label>
+                      <Row>
+                        <Col>
+                          <Form.Label>Start Time *</Form.Label>
+                          <Form.Control type="datetime-local" defaultValue={shift_ptr_start} name='shift_start_time' onChange={handleChange} />
+                        </Col>
+                        <Col>
+                          <Form.Label>End Time *</Form.Label>
+                          <Form.Control type="datetime-local" defaultValue={shift_ptr_end} name='shift_end_time' onChange={handleChange} />
+                        </Col>
+                      </Row>
+                    </Form.Group>
+
+                    <Form.Group className="mb-3" controlId="serviceDuration">
+                      <Form.Check type="checkbox" label="Use Service Duration (480 min)" name='Use_Service_Duration' onChange={handleChange} />
+                    </Form.Group>
+
+                    <Form.Group className="mb-3" controlId="breakTime">
+                      <Form.Label>Break (in Minutes)</Form.Label>
+                      <Form.Control type="number" defaultValue="0" name='Break' onChange={handleChange} />
+                    </Form.Group>
+
+                    <Form.Group className="mb-3" controlId="iadls">
+                      <Form.Label>IADLs</Form.Label>
+                      <div className="border p-2 rounded bg-light">
+                        There are no matching IADLs for the selected period.
+                        <Button variant="outline-dark" size="sm" className="float-end" onChange={handleChange}>Edit for visit</Button>
+                      </div>
+                    </Form.Group>
+                  </Col>
+                </Row>
+
+                <div className="text-end mt-3">
+                  <Button type="submit" variant="primary" onClick={handleSubmit}>Update Visit</Button>
+                </div>
+              </div>
+            </Modal>
+          );
+        }
+        if (seg.span < 60) {
+          return (
+            <OverlayTrigger
+              key={idx}
+              placement="top"
+              overlay={
+                <Tooltip id={`tooltip-${it.shift_id}`}>
+                  {it.client?.name} <br />
+                  {it.client?.address_line1} <br />
+                  {`${String(startH).padStart(2, "0")}:${String(startM).padStart(2, "0")} - ${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`}
+                </Tooltip>
+              }
+            >
+              <div
+                key={`${kind}-${it.shift_id || it.emp_id}-${idx}`}
+                className={kind === "shift" ? "employee-shift shift-cell" : "client-shift shift-cell"}
+                style={{ gridColumn: `span ${seg.span}` }} // very small visual
+              >
+                <div className="shift-time"><i class={seg.span > 30 ? "bi bi-chat-left-text" : "d-none"} style={{ fontSize: `10px` }}></i> </div>
+                <div className="shift-desc"><i class={seg.span > 30 ? "bi bi-info-circle-fill" : "d-none"} style={{ fontSize: `10px` }}></i> </div>
+                <div className="shift-desc" style={{height:"30px", width:`${seg.span/2}`}}></div>
+              </div>
+            </OverlayTrigger>
+          );
+        }
+        return (
+          <div
+            key={`${kind}-${it.shift_id || it.emp_id}-${idx}`}
+            className={(kind === "shift") ? "employee-shift shift-cell" : "client-shift shift-cell"}
+            style={{ gridColumn: `span ${seg.span}` }}
+            title={`${String(startH).padStart(2, "0")}:${String(startM).padStart(2, "0")} - ${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`}
+            onClick={() => handleOpen(it.client_id,it.emp_id,it,it)}
+          >
+            <div className="shift-time">
+              {`${String(startH).padStart(2, "0")}:${String(startM).padStart(2, "0")} - ${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`}
+            </div>
+            <div className="shift-desc">
+              {kind === "shift"
+                ? `Shift (${it.shift_type || ""})`
+                : `${it.client?.name || "Client"}${it.client?.address_line1 ? `\n${it.client.address_line1}` : ""}`}
+            </div>
+          </div>
+        );
+      }
+    });
+
+  // header hours segments (each spans 60 minutes)
+  const hours = Array.from({ length: endHour - startHour }, (_, i) => startHour + i);
 
   return (
     <div className="container-fluid">
       {/* Tabs */}
       <ul className="nav nav-tabs mt-3">
-        <li className="nav-item">
-          <a className="nav-link active" href="#">All-Employee Schedule</a>
+        <li className="nav-item"
+          onClick={() => {
+            if (empltrue) {
+              clschedule();
+            } else {
+              empschedule();
+            }
+          }}
+        >
+          <a className={`nav-link ${empltrue ? 'active' : ''}`} href="#"
+          >All-Employee Schedule</a>
         </li>
-        <li className="nav-item">
-          <a className="nav-link" href="#">All-Client Schedule</a>
+        <li className="nav-item"
+          onClick={() => {
+            if (clttrue) {
+              empschedule();
+            } else {
+              clschedule();
+            }
+          }}
+        >
+          <a className={`nav-link ${clttrue ? 'active' : ''}`} href="#"
+          >All-Client Schedule</a>
         </li>
       </ul>
 
@@ -95,91 +474,50 @@ const appointments = [
           <button className="btn btn-primary">Apply</button>
         </div>
       </div>
+      <div className="schedule-wrapper container-fluid">
+        <div className="schedule-table overflow-auto">
 
-      {/* Timeline Table */}
-      {/* <div className="schedule-container container-fluid mt-3">
-        <div className="schedule-grid overflow-auto">
-          <div className='header-row'>
-            <div className="header-cell employee-label">Employee</div>
-            {hours.map((hour) => (
-              <div key={hour} className="header-cell text-center">{hour.toString().padStart(2, '0')+":00"}</div>
-            ))}
-          </div>
-            {data.map((d => {
-              {d.employee.map((emp,rowidx)=>{
-                {d.shift.map((s)=>( s.emp_id === emp.emp_id &&
-                  <div key={rowidx} className='row-body'>
-                  <div className='cell employee-cell'>{emp.name}</div>
-                  {hours.map((hour,colidx)=>{ hour == (s.shift_start_time.split(" ")[4].split(":")[0]) && 
-                    <div></div>
-                  })}
-                )}
-              })}
-            }))}
-        </div>
-      </div> */}
-      <div className="schedule-container container-fluid mt-3">
-        <div className="schedule-grid overflow-auto">
-          
-          {/* Header Row */}
+          {/* Header */}
           <div className="header-row">
-            <div className="header-cell employee-label">Employee</div>
-            {hours.map((hour) => (
-              <div key={hour} className="header-cell text-center">
-                {hour.toString().padStart(2, '0') + ":00"}
+            <div className="header-employee">Employee</div>
+            <div className="header-timeline">
+              {/* timeline grid same column-base (totalMinutes) */}
+              <div className="hours-grid">
+                {hours.map((h) => (
+                  <div key={h} className="header-hour" style={{ gridColumn: `span 60` }}>
+                    {String(h).padStart(2, "0")}:00
+                  </div>
+                ))}
               </div>
-            ))}
+            </div>
           </div>
 
-          {/* Employee Rows */}
-          {/* {data.map((d, idx) => ( */}
-            {data.employee.map((emp, rowIdx) => (
-              <div key={rowIdx} className="row-body align-items-center">
-                <div className="cell employee-cell">{emp.name}</div>
+          {/* Employee rows */}
+          <div className="body-rows">
+            {employees.map((emp) => {
+              const shiftSegments = buildSegments(emp.shifts || []);
+              const apptSegments = buildSegments(emp.appointments || []);
 
-                {/* Empty grid background */}
-                {hours.map((hour, colIdx) => (
-                  <div key={colIdx} className="cell empty-cell"></div>
-                ))}
+              return (
+                <React.Fragment key={emp.emp_id}>
+                  {/* Row 1: employee daily-shift (gray) */}
+                  <div className="schedule-row">
+                    <div className="employee-cell">{emp.first_name || emp.name || `Emp ${emp.emp_id}`}</div>
+                    <div className={empltrue ? "timeline-row" : "d-none"}>{renderSegments(shiftSegments, "shift")}</div>
+                    <div className={clttrue ? "timeline-row" : "d-none"}>{renderSegments(apptSegments, "appt")}</div>
+                  </div>
 
-                {/* Shift blocks */}
-                {hours.map((hour, colIdx) => {
-                {data.shift.map((s) => {
-                  if (s.emp_id === emp.emp_id && hour == s.shift_start_time.split(" ")[4].split(":")[0]) {
-                    const startHour = s.shift_start_time.split(" ")[4].split(":")[0];
-                    const endHour = s.shift_end_time.split(" ")[4].split(":")[0];
-                    // const colStart = startHour - hours[0] + 1; 
-                    const colSpan = endHour - startHour;
-                    const client = data.client.find(cl => cl.client_id === s.client_id);
-                    console.log(hour);
-                    return (
-                      <div
-                        key={colIdx}
-                        className={`cell appointment bg-primary`}
-                        style={{
-                          gridColumn: `span ${colSpan}`
-                          }}>
-                        {startHour}:00 - ${endHour}:00
-                        <br />
-                        {client && <div>{client.address_line1}</div>}
-                      </div>
-                    );
-                  }
-                  else{
-                  return null;
-                  }
-                })}
-                })}
-              </div>
-            ))}
-          {/* ))} */}
+                  {/* Row 2: client appointments (blue) */}
+                  <div className={empltrue ? "schedule-row" : "d-none"}>
+                    <div className="employee-cell" />{/* empty left cell for alignment */}
+                    <div className="timeline-row">{renderSegments(apptSegments, "appt")}</div>
+                  </div>
+                </React.Fragment>
+              );
+            })}
+          </div>
         </div>
       </div>
-
-      
     </div>
   );
-  
 }
-
-

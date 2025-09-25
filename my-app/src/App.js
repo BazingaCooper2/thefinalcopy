@@ -1,9 +1,9 @@
 import Sidebar from './components/Sidebar';
 import Navbar from './components/Navbar';
 import Dashboard from './components/Dashboard';
-import SchedulePage from './components/SchedulePage';
+import SchedulePage from './components/SchedulePage copy';
 import Login from './components/Login';
-import Register from './components/Register';
+import Register from './components/Register2';
 import { BrowserRouter as Router, Routes, Route} from 'react-router-dom';
 import React from 'react';
 
