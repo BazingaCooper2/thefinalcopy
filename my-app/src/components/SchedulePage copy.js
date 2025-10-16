@@ -38,6 +38,7 @@ export default function SchedulePage() {
   const [shift_ptr_start, setShiftptrstart] = useState(null);
   const [shift_ptr_end, setShiftptrend] = useState(null);
   const [message, setMessage] = useState("");
+  const [unassignedPresent, setPresent] = useState(false);
   const [formData, setFormData] = useState({
     shift_id: "",
     client_id: "",
@@ -54,7 +55,18 @@ export default function SchedulePage() {
     Forms: "",
   });
 
-  const [currentDate, setCurrentDate] = useState(new Date("09-25-2025"));
+  const [collapsed, setCollapsed] = useState({"Outreach":false,"Willow Place":false,
+    "87 Neeve":false, "85 Neeve":false});
+
+  const toggleCollapse = (type) => {
+    setCollapsed((prev) => ({
+      ...prev,
+      [type]: !prev[type],
+    }));
+  };
+
+
+  const [currentDate, setCurrentDate] = useState(new Date().toLocaleDateString("en-CA"));
 
   // Optional: Update time every minute
   // useEffect(() => {
@@ -72,10 +84,10 @@ export default function SchedulePage() {
   };
 
   const handleOpen = (c, eid, empl, shift_ptr) => {
-    console.log(!open);
+    // console.log(!open);
     if (!open) {
       setOpen(true);
-      console.log(open);
+      // console.log(open);
       if (c !== 0) {
         setClient(c);
       }
@@ -120,7 +132,7 @@ export default function SchedulePage() {
     if (sid !== 0) {
       formData.shift_id = sid;
     }
-    console.log(JSON.stringify(formData));
+    // console.log(JSON.stringify(formData));
     e.preventDefault(); // Prevent page refresh
 
     try {
@@ -138,11 +150,11 @@ export default function SchedulePage() {
 
       const data = await res.json();
       setMessage("Form submitted successfully");
-      console.log("API response:", data);
+      // console.log("API response:", data);
       handleClose();
       //fetchSchedule();
     } catch (err) {
-      console.error(err);
+      // console.error(err);
       setMessage("Error submitting form");
     }
   };
@@ -169,11 +181,16 @@ export default function SchedulePage() {
         setData(json);
         // choose a default date: try to pick first daily_shift date if present
         const ds = json?.daily_shift;
-        console.log(currentDate);
-        if (ds && ds.length) setCurrentDate('25-09-2025');
+        // console.log(currentDate);
+        if (ds && ds.length) setCurrentDate(new Date().toLocaleDateString("en-GB").replace(/\//g, "-"));
         else setCurrentDate(new Date().toISOString().slice(0, 10));
+        const hasUnassigned = (json?.shift).some(
+          (s) => s.shift_status === "Unassigned"
+        );
+        setPresent(hasUnassigned);
       })
       .catch((err) => console.error(err));
+      
   }, []);
 
   if (!data || !currentDate) return <div>Loading schedule...</div>;
@@ -185,22 +202,36 @@ export default function SchedulePage() {
   }, {});
 
   // Build per-employee grouped data for the currentDate
-  const employees = (data.employee || []).filter((emp) => emp.status === "Available")
-    .map((emp) => {
-      const shifts = (data.daily_shift || []).filter(
-        (ds) => ds.emp_id === emp.emp_id && ds.shift_date === currentDate
-      );
+  // Build per-employee grouped data for the currentDate
+const employees = (data.employee || [])
+  // only employees who are available and have daily_shift on that date
+  .filter((emp) => {
+    const hasDailyShift = (data.daily_shift || []).some(
+      (ds) => ds.emp_id === emp.emp_id && ds.shift_date === currentDate
+    );
+    return emp.status === "Available" && hasDailyShift;
+  })
+  .map((emp) => {
+    const shifts = (data.daily_shift || []).filter(
+      (ds) => ds.emp_id === emp.emp_id && ds.shift_date === currentDate
+    );
 
-      const appointments = (data.shift || []).filter(
+    const appointments = (data.shift || [])
+      .filter(
         (s) => s.emp_id === emp.emp_id && s.date === currentDate
-      ).map(s => ({ ...s, client: clientsMap[s.client_id] || null }));
+      )
+      .map((s) => ({
+        ...s,
+        client: clientsMap[s.client_id] || null,
+      }));
 
-      return {
-        ...emp,
-        shifts,
-        appointments,
-      };
-    });
+    return {
+      ...emp,
+      shifts,
+      appointments,
+    };
+  });
+
 
   // Helper: given sorted items, create segments (gap / item) to render efficiently
   const buildSegments = (items) => {
@@ -349,11 +380,11 @@ export default function SchedulePage() {
                       <Row>
                         <Col>
                           <Form.Label>Start Time *</Form.Label>
-                          <Form.Control type="datetime-local" defaultValue={shift_ptr_start} name='shift_start_time' onChange={handleChange} />
+                          <Form.Control type="text" defaultValue={shift_ptr_start} name='shift_start_time' onChange={handleChange} />
                         </Col>
                         <Col>
                           <Form.Label>End Time *</Form.Label>
-                          <Form.Control type="datetime-local" defaultValue={shift_ptr_end} name='shift_end_time' onChange={handleChange} />
+                          <Form.Control type="text" defaultValue={shift_ptr_end} name='shift_end_time' onChange={handleChange} />
                         </Col>
                       </Row>
                     </Form.Group>
@@ -400,7 +431,8 @@ export default function SchedulePage() {
               <div
                 key={`${kind}-${it.shift_id || it.emp_id}-${idx}`}
                 className={kind === "shift" ? "employee-shift shift-cell" : "client-shift shift-cell"}
-                style={{ gridColumn: `span ${seg.span}` }} // very small visual
+                style={{ gridColumn: `span ${seg.span}`, cursor: "pointer" }} // very small visual
+                onClick={() => handleOpen(it.client_id,it.emp_id,it,it)}
               >
                 <div className="shift-time"><i class={seg.span > 30 ? "bi bi-chat-left-text" : "d-none"} style={{ fontSize: `10px` }}></i> </div>
                 <div className="shift-desc"><i class={seg.span > 30 ? "bi bi-info-circle-fill" : "d-none"} style={{ fontSize: `10px` }}></i> </div>
@@ -413,7 +445,7 @@ export default function SchedulePage() {
           <div
             key={`${kind}-${it.shift_id || it.emp_id}-${idx}`}
             className={(kind === "shift") ? "employee-shift shift-cell" : "client-shift shift-cell"}
-            style={{ gridColumn: `span ${seg.span}` }}
+            style={{ gridColumn: `span ${seg.span}`, cursor: "pointer" }}
             title={`${String(startH).padStart(2, "0")}:${String(startM).padStart(2, "0")} - ${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`}
             onClick={() => handleOpen(it.client_id,it.emp_id,it,it)}
           >
@@ -434,7 +466,8 @@ export default function SchedulePage() {
   const hours = Array.from({ length: endHour - startHour }, (_, i) => startHour + i);
 
   return (
-    <div className="container-fluid">
+    <div className="container-fluid ms-sm-5">
+
       {/* Tabs */}
       <ul className="nav nav-tabs mt-3">
         <li className="nav-item"
@@ -475,6 +508,143 @@ export default function SchedulePage() {
         </div>
       </div>
       <div className="schedule-wrapper container-fluid">
+                {/* ===== Unassigned Shifts Timeline ===== */}
+        
+        {/* UNASSIGNED CLIENT SHIFTS SECTION */}
+        <div className="unassigned-wrapper container-fluid mt-4 mb-4">
+          <div className="border-0 shadow-sm">
+            <div className="bg-danger p-3 text-white fw-bold">
+              Unassigned Client Shifts
+            </div>
+
+            <div className={unassignedPresent?"p-0 unassigned-scroll-x":"d-none"}>
+              
+              <div className="header-row bg-light border-bottom">
+                <div className="header-employee">Service Type / Client</div>
+                <div className="header-timeline">
+                  <div className="hours-grid">
+                    {hours.map((h) => (
+                      <div
+                        key={`unassigned-hour-${h}`}
+                        className="header-hour"
+                        style={{ gridColumn: `span 60`}}
+                      >
+                        {String(h).padStart(2, "0")}:00
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              
+              <div className="body-rows">
+                {Object.entries(
+                  (data.client || []).reduce((groups, client) => {
+                    const unassigned = (data.shift || []).filter(
+                      (s) => s.client_id === client.client_id && s.shift_status === "Unassigned"
+                    );
+                    if (unassigned.length > 0) {
+                      const type = client.service_type || "Uncategorized";
+                      if (!groups[type]) groups[type] = [];
+                      groups[type].push({ client, unassigned });
+                    }
+                    return groups;
+                  }, {})
+                ).map(([serviceType, clients]) => {
+                  
+                  return (
+                    <div key={serviceType} className="aacord mb-2">
+                      
+                      <div
+                        className="bg-light border py-2 px-3 d-flex justify-content-between align-items-center cursor-pointer"
+                        onClick={() => toggleCollapse(serviceType)}
+                        style={{ cursor: "pointer", width:"1220px"}}
+                      >
+                        <span className="fw-bold text-dark">{serviceType}</span>
+                        <i
+                          className={`bi ${collapsed[serviceType] ? "bi-chevron-down" : "bi-chevron-up"}`}
+                        ></i>
+                      </div>
+
+                      
+                      {!collapsed[serviceType] && (
+                        <div className="client-rows">
+                          {clients.map(({ client, unassigned }) => {
+                            const segments = buildSegments(unassigned);
+                            return (
+                              <div
+                                className="schedule-row border-bottom"
+                                key={`unassigned-${client.client_id}`}
+                              >
+                                
+                                <div className="employee-cell bg-white">
+                                  <span className="fw-bold d-block">{client.name}</span>
+                                </div>
+
+                                
+                                <div className="timeline-row bg-light">
+                                  {segments.map((seg, idx) => {
+                                    if (seg.type === "empty") {
+                                      return (
+                                        <div
+                                          key={`empty-${client.client_id}-${idx}`}
+                                          className="empty-cell"
+                                          style={{ gridColumn: `span ${seg.span}` }}
+                                        />
+                                      );
+                                    } else {
+                                      const it = seg.item;
+                                      const startMin = toMinutesOfDay(it.shift_start_time);
+                                      const endMin = toMinutesOfDay(it.shift_end_time);
+                                      const startH = Math.floor(startMin / 60);
+                                      const startM = startMin % 60;
+                                      const endH = Math.floor(endMin / 60);
+                                      const endM = endMin % 60;
+
+                                      return (
+                                        <OverlayTrigger
+                                          key={`unassigned-${client.client_id}-${idx}`}
+                                          placement="top"
+                                          overlay={
+                                            <Tooltip id={`tooltip-${it.shift_id}`}>
+                                              {`${String(startH).padStart(2, "0")}:${String(startM).padStart(2, "0")} - ${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`}
+                                            </Tooltip>
+                                          }
+                                        >
+                                          <div
+                                            className="shift-cell bg-warning text-dark fw-semibold rounded"
+                                            style={{
+                                              gridColumn: `span ${seg.span}`,
+                                              border: "1px solid #d39e00",
+                                              cursor: "pointer"
+                                            }}
+                                            onClick={() => handleOpen(it.client_id, 0, client, it)}
+                                          >
+                                            <span className="small">
+                                              {`${String(startH).padStart(2, "0")}:${String(startM).padStart(2, "0")} - ${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`}
+                                            </span>
+                                          </div>
+                                        </OverlayTrigger>
+                                      );
+                                    }
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            <div className={!unassignedPresent?"p-2 unassigned-scroll-x text-centre d-flex":"d-none"}> No Unassigned Shifts </div>
+          </div>
+        </div>
+
+
+
         <div className="schedule-table overflow-auto">
 
           {/* Header */}
@@ -499,7 +669,7 @@ export default function SchedulePage() {
               const apptSegments = buildSegments(emp.appointments || []);
 
               return (
-                <React.Fragment key={emp.emp_id}>
+                <React.Fragment key={emp.emp_id} >
                   {/* Row 1: employee daily-shift (gray) */}
                   <div className="schedule-row">
                     <div className="employee-cell">{emp.first_name || emp.name || `Emp ${emp.emp_id}`}</div>
@@ -508,7 +678,7 @@ export default function SchedulePage() {
                   </div>
 
                   {/* Row 2: client appointments (blue) */}
-                  <div className={empltrue ? "schedule-row" : "d-none"}>
+                  <div className={(empltrue) ? "schedule-row" : "d-none"}>
                     <div className="employee-cell" />{/* empty left cell for alignment */}
                     <div className="timeline-row">{renderSegments(apptSegments, "appt")}</div>
                   </div>

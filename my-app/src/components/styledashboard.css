@@ -294,3 +294,82 @@
 .text-link:hover {
   text-decoration: underline;
 }
+
+/* Horizontal scrolling only */
+.unassigned-scroll-x {
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap; 
+}
+
+/* Header row layout */
+.unassigned-wrapper .header-row {
+  display: flex;
+  align-items: center;
+  width: 1220px;
+  /* position: sticky; */
+  /* top: 0; */
+  /* z-index: 10; */
+}
+
+.unassigned-wrapper .header-employee {
+  width: 200px;
+  min-width: 200px;
+  padding: 0.5rem;
+  background-color: #f8f9fa;
+  border-right: 1px solid #dee2e6;
+}
+
+.unassigned-wrapper .header-timeline {
+  flex-grow: 1;
+}
+
+.unassigned-wrapper .hours-grid {
+  width: 200px;
+  display: grid;
+  grid-template-columns: repeat(1020, 1fr);
+  gap: 1px;
+}
+
+/* Rows */
+.unassigned-wrapper .body-rows {
+  overflow-x: visible;
+}
+
+.unassigned-wrapper .schedule-row {
+  display: flex;
+  align-items: center;
+  height: 45px;
+}
+
+.unassigned-wrapper .employee-cell {
+  width: 200px;
+  min-width: 200px;
+  padding: 0.5rem;
+  border-right: 1px solid #eee;
+  white-space: normal;
+}
+
+
+.unassigned-wrapper .timeline-row {
+  display: grid;
+  grid-template-columns: repeat(1020, 1fr);
+  gap: 1px;
+  align-items: center;
+  height: 45px;
+}
+
+.unassigned-wrapper .shift-cell {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  justify-content: center;
+  font-size: 12px;
+  height: 35px;
+  transition: transform 0.2s ease;
+}
+
+.unassigned-wrapper .shift-cell:hover {
+  transform: scale(1.05);
+}
+

@@ -18,6 +18,7 @@ export default function SchedulePage() {
   const [empl, setEmpl] = useState(null);
   const [shift_ptr, setShiftptr] = useState(null);
   const [message, setMessage] = useState("");
+  const [unassignedShifts, setUnassignedShifts] = useState([]);
   const [formData, setFormData] = useState({
     shift_id:"",
     client_id:"",
@@ -160,6 +161,9 @@ export default function SchedulePage() {
 
   return (
     <div className="container-fluid">
+
+    
+
       {/* Tabs */}
       <ul className="nav nav-tabs mt-3">
         <li className="nav-item"

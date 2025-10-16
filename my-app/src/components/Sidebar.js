@@ -1,6 +1,6 @@
 import './styledashboard.css';
 import axios from 'axios';
-import SchedulePage from './SchedulePage';
+import SchedulePage from './SchedulePage copy';
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import "../../node_modules/bootstrap-icons/font/bootstrap-icons.css";
@@ -39,11 +39,11 @@ export default function Sidebar() {
                     </li>
                     <li>
                         <a href="#submenu1" class="nav-link px-sm-0 px-2">
-                            <i class="fs-5 bi-person"></i><span class="ms-1 d-none d-sm-inline text-white">Client</span> </a>
+                            <i class="fs-5 bi-person"></i><span class="ms-1 d-none d-sm-inline text-white"><Link to="/client" className='text-decoration-none text-white'>Client</Link></span> </a>
                     </li>
                     <li>
                         <a href="#" class="nav-link px-sm-0 px-2">
-                            <i class="fs-5 bi-bag-plus"></i><span class="ms-1 d-none d-sm-inline text-white">Employee</span></a>
+                            <i class="fs-5 bi-bag-plus"></i><span class="ms-1 d-none d-sm-inline text-white"><Link to="/employee" className='text-decoration-none text-white'>Employee</Link></span></a>
                     </li>
                     <li class="dropdown text-white">
                         <a href="#" class="nav-link dropdown-toggle px-sm-0 px-1" id="dropdown" data-bs-toggle="dropdown" aria-expanded="false">
@@ -54,6 +54,15 @@ export default function Sidebar() {
                             <li><a class="dropdown-item" href="#">ClientSchedule</a></li>
                             <li><a class="dropdown-item" href="#">Employee Schedule</a></li>
                             <li><a class="dropdown-item" href="#"><Link to="/schedule" className='text-decoration-none text-white'>All Schedule</Link></a></li>
+                        </ul>
+                    </li>
+                    <li class="dropdown text-white">
+                        <a href="#" class="nav-link dropdown-toggle px-sm-0 px-1" id="dropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="bi bi-bandaid-fill"></i><span class="ms-1 d-none d-sm-inline">Injury Reports</span>
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-dark text-small shadow" aria-labelledby="dropdown">
+                            <li><a class="dropdown-item" href="#"><Link to="/injuryReport" className='text-decoration-none text-white'>Client Injury Report</Link></a></li>
+                            <li><a class="dropdown-item" href="#"><Link to="/injuryReport" className='text-decoration-none text-white'>Employee Injury Report</Link></a></li>
                         </ul>
                     </li>
                 </ul>
@@ -82,6 +91,10 @@ export default function Sidebar() {
                     <li>
                            <Link to="/schedule" class="nav-link px-sm-0 px-2">
                            <i class="fs-5 bi-table text-white"></i></Link> 
+                    </li>
+                    <li>
+                           <Link to="/schedule" class="nav-link px-sm-0 px-2">
+                           <i class="bi bi-bandaid-fill text-white"></i></Link> 
                     </li>
                 </ul>
             </div>
