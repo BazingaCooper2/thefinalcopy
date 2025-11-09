@@ -54,6 +54,7 @@ export default function Sidebar() {
                             <li><a class="dropdown-item" href="#">ClientSchedule</a></li>
                             <li><a class="dropdown-item" href="#">Employee Schedule</a></li>
                             <li><a class="dropdown-item" href="#"><Link to="/schedule" className='text-decoration-none text-white'>All Schedule</Link></a></li>
+                            <li><a class="dropdown-item" href="#"><Link to="/monthlySchedule" className='text-decoration-none text-white'>Prepare Monthly Schedule</Link></a></li>
                         </ul>
                     </li>
                     <li class="dropdown text-white">
@@ -63,6 +64,7 @@ export default function Sidebar() {
                         <ul class="dropdown-menu dropdown-menu-dark text-small shadow" aria-labelledby="dropdown">
                             <li><a class="dropdown-item" href="#"><Link to="/injuryReport" className='text-decoration-none text-white'>Client Injury Report</Link></a></li>
                             <li><a class="dropdown-item" href="#"><Link to="/injuryReport" className='text-decoration-none text-white'>Employee Injury Report</Link></a></li>
+                            <li><a class="dropdown-item" href="#"><Link to="/fillInjuryReport" className='text-decoration-none text-white'>Fill Injury Report</Link></a></li>
                         </ul>
                     </li>
                 </ul>

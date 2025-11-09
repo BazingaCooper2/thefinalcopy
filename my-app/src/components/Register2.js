@@ -11,7 +11,9 @@ export default function Register() {
     email: "",
     phone_number: "",
     address: "",
+    emp_role:"",
     qualification: "",
+    full_time:"",
     skills: "",
     image: "",
     gender: "",
@@ -274,12 +276,26 @@ export default function Register() {
       </div>
 
       <div className={role==="employee"?"field":"d-none"}>
+        <label className="label" htmlFor="emp_role">Assigned Role</label>
+        <input
+          id="emp_role"
+          className="input bg-light"
+          value={form.qualification}
+          onChange={(e) => setField("emp_role", e.target.value)}
+        />
         <label className="label" htmlFor="qualification">Qualification</label>
         <input
           id="qualification"
           className="input bg-light"
           value={form.qualification}
           onChange={(e) => setField("qualification", e.target.value)}
+        />
+        <label className="label" htmlFor="full_time">Full Time/ Half Time/ Temporary</label>
+        <input
+          id="full_time"
+          className="input bg-light"
+          value={form.full_time}
+          onChange={(e) => setField("full_time", e.target.value)}
         />
       </div>
 
