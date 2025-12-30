@@ -878,7 +878,22 @@ def delete_unavailability(leave_id):
     supabase.table("leaves").delete().eq("leave_id", leave_id).execute()
     return jsonify({"message": "deleted"}), 200
 
-
+@app.get("/schedule/{service}")
+def get_schedule(service: str):
+    return {
+        "weeks": [f"Day {i+1}" for i in range(42)],
+        "employees": [
+            {
+                "id": 1,
+                "name": "Alice",
+                "address": "NW",
+                "shifts": [
+                    {"time": "d", "type": "flw-training", "training": True}
+                    for _ in range(42)
+                ]
+            }
+        ]
+    }
 # --- Run ---
 if __name__ == '__main__':
     app.run(debug=True)

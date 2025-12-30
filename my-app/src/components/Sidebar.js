@@ -44,6 +44,7 @@ export default function Sidebar() {
                             <li><a class="dropdown-item" href="#">Employee Schedule</a></li>
                             <li><a class="dropdown-item" href="#"><Link to="/schedule" className='text-decoration-none text-white'>All Schedule</Link></a></li>
                             <li><a class="dropdown-item" href="#"><Link to="/monthlySchedule" className='text-decoration-none text-white'>Prepare Monthly Schedule</Link></a></li>
+                            <li><a class="dropdown-item" href="#"><Link to="/masterSchedule" className='text-decoration-none text-white'>Master Schedule</Link></a></li>
                         </ul>
                     </li>
                     <li class="dropdown text-white">

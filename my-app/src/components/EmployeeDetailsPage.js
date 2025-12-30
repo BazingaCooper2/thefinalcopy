@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import { useParams } from "react-router-dom";
+
 
 const EmployeeDetails = () => {
   const [employees, setEmployees] = useState([]);
@@ -13,8 +12,8 @@ const EmployeeDetails = () => {
     fetch("http://127.0.0.1:5000/employees")
       .then((res) => res.json())
       .then((data) => {
-        setEmployees(data.employee || []);
-        setFilteredEmployees(data.employee || []);
+        setEmployees(data || []);
+        setFilteredEmployees(data || []);
       })
       .catch((err) => console.error("Error fetching employees:", err));
   }, []);
@@ -93,15 +92,9 @@ const EmployeeDetails = () => {
                       <td>{emp.designation || "-"}</td>
                       <td>
                         <span
-                          className={`badge ${
-                            emp.status === "Available"
-                              ? "bg-success"
-                              : emp.status === "Busy"
-                              ? "bg-warning text-dark"
-                              : "bg-secondary"
-                          }`}
+                                  className={`badge`} style={{ backgroundColor: emp.status.color }}
                         >
-                          {emp.status || "N/A"}
+                          {emp.status.label || "N/A"}
                         </span>
                       </td>
                       <td>{emp.service_type || "-"}</td>

@@ -1,4 +1,4 @@
-.body{
+﻿.body{
   padding: 20px 24px 28px;
 }
 .navalign{
@@ -418,18 +418,182 @@
 
 .column-container {
     position: relative;
-    height: calc(60px * 16); /* 16 hours (07�22) */
+    height: calc(60px * 16); /* 16 hours (07–22) */
 }
 
-.shift-block {
-    position: absolute;
-    left: 5px;
-    right: 5px;
-    background: #e1f3ff;
-    border-left: 4px solid #0d6efd;
-    padding: 4px;
-    border-radius: 4px;
-    font-size: 11px;
+.service-tabs {
+    display: flex;
+    gap: 10px;
+    padding: 12px 16px;
+    border-bottom: 1px solid #e5e7eb;
+    background: #ffffff;
+    position: sticky;
+    top: 0;
+    z-index: 10;
 }
+
+.service-tab {
+    padding: 8px 16px;
+    border-radius: 20px;
+    border: none;
+    background: #f3f4f6;
+    font-size: 14px;
+    font-weight: 500;
+    color: #374151;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.service-tab:hover {
+    background: #e0e7ff;
+}
+
+.service-tab.active {
+    background: #4f46e5;
+    color: white;
+    font-weight: 600;
+}
+
+.master-shift-cell {
+    width: 60px;
+    height: 50px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-right: 1px solid #e5e7eb;
+    border-bottom: 1px solid #e5e7eb;
+    font-size: 12px;
+    font-weight: 600;
+    position: relative; /* SAFE now */
+    box-sizing: border-box;
+}
+
+
+.training-badge {
+    position: absolute;
+    top: 2px;
+    right: 3px;
+    font-size: 9px;
+    font-weight: bold;
+    color: #065f46;
+}
+
+.master-shift-cell:hover {
+    outline: 2px solid #4f46e5;
+    outline-offset: -2px;
+    z-index: 0;
+}
+
+.vacation {
+    background: #add8e6;
+}
+
+.float {
+    background: #0096ff;
+    color: white;
+}
+
+.unavailable {
+    background: #9ca3af;
+    color: white;
+}
+
+.flw-training {
+    background: #bbf7d0;
+}
+
+.flw-rtw {
+    background: #e5e7eb;
+}
+
+.gil {
+    background: #166534;
+    color: white;
+}
+
+.open {
+    background: #fef08a;
+}
+
+.sick {
+    background: #dc2626;
+    color: white;
+}
+
+.leave {
+    background: #f9a8d4;
+}
+
+.bereavement {
+    background: #67e8f9;
+}
+
+.service-tabs {
+    display: flex;
+    gap: 10px;
+    padding: 12px 16px;
+    border-bottom: 1px solid #e5e7eb;
+    background: #ffffff;
+    position: sticky;
+    top: 0;
+    z-index: 10; /* ✅ FIXED (was -2 ❌) */
+}
+.schedule-wrapper {
+    overflow: auto;
+    max-height: calc(100vh - 140px);
+    background: #ffffff;
+}
+
+.schedule-header {
+    display: grid;
+    grid-template-columns: 200px repeat(42, 60px);
+    position: sticky;
+    top: 5px; /* BELOW SERVICE TABS */
+    background: #f9fafb;
+    z-index: 0;
+}
+
+.header-cell {
+    text-align: center;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 6px 0;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.week-start {
+    border-left: 2px solid #9ca3af;
+}
+
+.master-schedule-row {
+    display: grid;
+    grid-template-columns: 200px repeat(42, 60px);
+    min-height: 40px;
+}
+
+.master-schedule-row:hover {
+    background: #f8fafc;
+}
+
+.master-employee-cell {
+    padding: 6px 8px;
+    font-weight: 600;
+    background: #f9fafb;
+    border-right: 1px solid #e5e7eb;
+    position: sticky;
+    left: 0;
+    z-index: 0;
+}
+
+.sticky-col {
+    position: sticky;
+    left: 0;
+    z-index: 5;
+}
+
+
+
+
+
 
 

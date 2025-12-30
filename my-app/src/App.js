@@ -13,10 +13,11 @@ import GenerateShifts from './components/PrepareMonthlySchedule.js';
 import AddShift from './components/manualShiftAddition.js';
 import { BrowserRouter as Router, Routes, Route} from 'react-router-dom';
 import React from 'react';
-
 import '../node_modules/bootstrap/dist/css/bootstrap.min.css';
+import MasterSchedule from './components/MasterSchedule.js';
 
 function App() {
+    
   return (
     <div className="App h-screen flex flex-col">
       <Router>
@@ -36,7 +37,8 @@ function App() {
             <Route path="/monthlySchedule" element={<GenerateShifts />}></Route>
             <Route path="/addShift" element={<AddShift />}></Route>
             <Route path="/employee/:id" element={<EmployeeDetailsEach />} />
-          </Routes>
+            <Route path="/masterSchedule" element={<MasterSchedule />}></Route>
+        </Routes>
           </div>
         </div>
       </Router>
