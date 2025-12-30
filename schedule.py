@@ -208,6 +208,14 @@ def get_employees_for_shift(dateofshift):
     employee = supabase.table("employee").select("emp_id,seniority").order("seniority", desc=False).execute()
     daily_shifts = supabase.table("daily_shift").select("emp_id, shift_start_time, shift_end_time, shift_date").eq("shift_date", str(today)).execute()
     shifts = supabase.table("shift").select("emp_id, shift_start_time, shift_end_time, date").eq("date",str(today)).execute()
+    leaves_raw = supabase.table("leaves").select("emp_id, leave_start_date, leave_start_time, leave_end_date, leave_end_time").execute().data
+    leaves = []
+    for lv in leaves_raw:
+        start = lv["leave_start_date"]
+        end   = lv["leave_end_date"]
+
+        if start <= today <= end:
+            leaves.append(lv)
 
     # Merge results into employee dicts
     merged = []
@@ -215,13 +223,21 @@ def get_employees_for_shift(dateofshift):
         emp_id = e["emp_id"]
         ds = next((ds for ds in daily_shifts.data if ds["emp_id"] == emp_id), None)
         s = next((s for s in shifts.data if s["emp_id"] == emp_id), None)
+        emp_leaves = [
+        {
+            "start": f"{lv['leave_start_date']} {lv['leave_start_time']}",
+            "end": f"{lv['leave_end_date']} {lv['leave_end_time']}"
+        }
+        for lv in leaves if lv["emp_id"] == emp_id
+]
         if ds and s:
             merged.append({
                 "emp_id": emp_id,
                 "dsst": ds["shift_start_time"],
                 "dset": ds["shift_end_time"],
                 "ssst": s["shift_start_time"],
-                "sset": s["shift_end_time"]
+                "sset": s["shift_end_time"],
+                "leaves": emp_leaves,
             })
         elif ds and not s:
             merged.append({
@@ -229,10 +245,15 @@ def get_employees_for_shift(dateofshift):
                 "dsst": ds["shift_start_time"],
                 "dset": ds["shift_end_time"],
                 "ssst": "",
-                "sset": ""
+                "sset": "",
+                "leaves": emp_leaves,
             })
     print(merged)
     return merged
+
+def overlaps_datetime(start1, end1, start2, end2):
+    print(start1, end1, start2, end2)
+    return start1 < end2 and end1 > start2
 
 
 def assign_tasks(changes):
@@ -240,10 +261,11 @@ def assign_tasks(changes):
     #print(changes["new_clients"][0])
     for ch in changes["new_clients"]:
         employeetab = get_employees_for_shift(ch['date'])
+        print(employeetab)
         print("Hi2",ch)
         eligible = [
             e for e in employeetab
-            if (overlaps(ch['shift_start_time'], ch['shift_end_time'],e['dsst'], e['dset'], e['ssst'], e['sset']))
+            if (overlaps(ch['shift_start_time'], ch['shift_end_time'],e['dsst'], e['dset'], e['ssst'], e['sset']) and (e['leaves'] == [] or (e['leaves'] and (not overlaps_datetime(ch['shift_start_time'], ch['shift_end_time'], lv['leave_start_time'], lv['leave_end_time']) for lv in e["leaves"]))) )
         ]
         print(eligible)
 
@@ -340,7 +362,7 @@ def register():
             ds = supabase.table("daily_shift").insert({
                 "shift_date":str(final_date),
                 "emp_id": newemp_id,
-                "shift_type": f"s{ind + 1}",
+                "shift_type": "flw-rtw",
                 "shift_start_time":f"{shift_date} {sh["start"]}:00",
                 "shift_end_time":f"{shift_date} {sh["end"]}:00"
             }).execute()
@@ -536,18 +558,105 @@ def get_clients():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
     
+STATUS_CONFIG = {
+    "TRAINING": {"label": "TRN", "color": "green"},
+    "FLW-RTW": {"label": "FLW", "color": "green"},
+
+    "LEAVE": {"label": "LV", "color": "red"},
+
+    "CLOCKED_IN": {"label": "IN", "color": "orange"},
+    "CLOCKED_OUT": {"label": "OUT", "color": "aqua"},
+
+    "OFFER_SENT": {"label": "OFR", "color": "purple"},
+
+    "WAITING": {"label": "WT", "color": "gray"}
+}
+
 @app.route('/employees', methods=['GET'])
 def get_employees():
     try:
         # Fetch all employees
-        response = supabase.table("employee").select("*").execute()
+        response = get_employees_with_status()
+        
+
 
         if response:
-            return jsonify({"employee": response.data})
-        return jsonify({"error": str(response.error)}), 400
+            return response
+        return jsonify({"error": str(response)}), 400
     
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+def resolve_employee_status(emp_id, shifts, leaves):
+
+    # 1️⃣ Training / FLW / RTW
+    for s in shifts:
+        if s["emp_id"] == emp_id and s["shift_type"] in ["training", "flw-rtw"]:
+            return STATUS_CONFIG["TRAINING"]
+
+    # 2️⃣ Leave
+    for l in leaves:
+        if l["emp_id"] == emp_id:
+            return STATUS_CONFIG["LEAVE"]
+
+    # 3️⃣ Clocked In
+    '''for a in attendance:
+        if a["emp_id"] == emp_id and a.get("clock_in") and not a.get("clock_out"):
+            return STATUS_CONFIG["CLOCKED_IN"]
+
+    # 4️⃣ Clocked Out
+    for a in attendance:
+        if a["emp_id"] == emp_id and a.get("clock_out"):
+            return STATUS_CONFIG["CLOCKED_OUT"]
+
+    # 5️⃣ Offer Sent
+    for o in offers:
+        if o["emp_id"] == emp_id:
+            return STATUS_CONFIG["OFFER_SENT"]'''
+
+    # 6️⃣ Waiting
+    return STATUS_CONFIG["WAITING"]
+def get_employees_with_status():
+
+    now = datetime.now()
+    now_str = now.strftime("%Y-%m-%d %H:%M:%S")
+
+    today = date.today()
+    today_str = today.strftime("%Y-%m-%d")
+    employees = supabase.table("employee").select("*").execute().data
+    shifts = supabase.table("daily_shift") \
+        .select("*") \
+        .lte("shift_start_time", now_str) \
+        .gte("shift_end_time", now_str) \
+        .execute().data
+
+    leaves = supabase.table("leaves") \
+        .select("*") \
+        .lte("leave_start_date", today_str) \
+        .gte("leave_end_date", today_str) \
+        .execute().data
+    #attendance = supabase.table("attendance").select("*").execute().data
+    #offers = supabase.table("offers").eq("status", "sent").execute().data
+
+    result = []
+
+    for emp in employees:
+        status = resolve_employee_status(
+            emp["emp_id"],
+            shifts,
+            leaves,
+            
+        )
+
+        result.append({
+            "emp_id": emp["emp_id"],
+            "first_name": emp["first_name"],
+            "last_name": emp.get("last_name", ""),
+            "service_type": emp.get("service_type"),
+            "status": status
+        })
+
+    return result
         
 @app.route("/injury_reports", methods=["GET"])
 def get_injury_reports():
@@ -708,7 +817,7 @@ def generate_next_month_shifts():
                         "shift_date": current_date.strftime("%Y-%m-%d"),
                         "shift_start_time": f"{current_date.strftime('%Y-%m-%d')} {shift_start_time}",
                         "shift_end_time": f"{current_date.strftime('%Y-%m-%d')} {shift_end_time}",
-                        "shift_type":"s1",
+                        "shift_type":"flw-rtw",
                     })
 
             # Insert all into Supabase
@@ -822,7 +931,7 @@ def add_unavailability():
 
     supabase.table("leaves").insert({
         "emp_id": req["emp_id"],
-        "leave_type": "Unavailable",
+        "leave_type": req["type"],
         "leave_start_date": req["start_date"],
         "leave_end_date": req["end_date"],
         "leave_reason": req["description"],
@@ -878,22 +987,193 @@ def delete_unavailability(leave_id):
     supabase.table("leaves").delete().eq("leave_id", leave_id).execute()
     return jsonify({"message": "deleted"}), 200
 
-@app.get("/schedule/{service}")
-def get_schedule(service: str):
-    return {
-        "weeks": [f"Day {i+1}" for i in range(42)],
-        "employees": [
-            {
-                "id": 1,
-                "name": "Alice",
-                "address": "NW",
-                "shifts": [
-                    {"time": "d", "type": "flw-training", "training": True}
-                    for _ in range(42)
-                ]
-            }
-        ]
-    }
+@app.route("/update_employee_settings/<emp_id>", methods=["POST"])
+def update_employee_settings(emp_id):
+    data = request.json
+    print(data.keys(), data.values())
+    clean_data = {}
+
+    for key, value in data.items():
+
+        # Remove invalid values
+        if value in [None, "", "undefined", "null", "NaN"]:
+            continue
+
+        # TRY to convert number strings safely
+        try:
+            if isinstance(value, str) and value.isdigit():
+                clean_data[key] = int(value)
+            else:
+                clean_data[key] = value
+        except:
+            # If conversion fails, skip this field
+            continue
+
+    if not clean_data:
+        return jsonify({"status": "error", "message": "No valid fields to update"}), 400
+    print(data)
+    try:
+        update_result = supabase.table("employee").update(data).eq("emp_id", emp_id).execute()
+
+        return jsonify({"status": "success", "updated": update_result.data}), 200
+
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route("/masterSchedule/<service>", methods=["GET"])
+def masterSchedule(service: str):
+    print(service)
+    emp_res = supabase.table("employee") \
+        .select("emp_id, first_name, address") \
+        .eq("service_type", service) \
+        .execute()
+    employees = emp_res.data
+
+    start_date = date.today()
+    dates = get_6_week_dates(start_date)
+
+    output_employees = []
+
+    for emp in employees:
+        print(emp["first_name"])
+        shifts = []
+        #print(dates[-1])
+        # 3️⃣ Get all shifts for this employee in date range
+        shift_res = supabase.table("daily_shift") \
+            .select("*") \
+            .eq("emp_id", emp["emp_id"]) \
+            .gte("shift_date", dates[0]) \
+            .lte("shift_date", dates[-1]) \
+            .execute()
+        #print(shift_res)
+        shift_map = {
+            s["shift_date"]: s for s in shift_res.data
+        }
+        
+        for d in dates:
+            #print(shift_map[str(d)])
+            shift = shift_map.get(d.isoformat())
+            print(shift)
+            if not shift:
+                # open shift / empty
+                shifts.append({
+                    "time": "",
+                    "type": "open",
+                    "training": False
+                })
+                continue
+            
+            # 4️⃣ Apply shift notation
+            shift_date = datetime.fromisoformat(shift["shift_date"])
+            start_time = datetime.fromisoformat(shift["shift_start_time"])
+            end_time = datetime.fromisoformat(shift["shift_end_time"])
+
+            if service == "Outreach":
+                time_code = f"{start_time.strftime('%H:%M:%S')}-{end_time.strftime('%H:%M:%S')}"
+
+            else:
+                noon_cutoff = shift_date.replace(hour=12, minute=0, second=0)
+                evening_cutoff = shift_date.replace(hour=18, minute=0, second=0)
+
+                if end_time <= noon_cutoff:
+                    shift["shift_code"] = "day"        # d
+                elif start_time > noon_cutoff and end_time <= evening_cutoff:
+                    shift["shift_code"] = "noon"       # n
+                else:
+                    shift["shift_code"] = "evening"    # e
+
+                time_code = SHIFT_CONVENTIONS[service][shift["shift_code"]]
+
+            shifts.append({
+                "time": time_code,
+                "type": SHIFT_TYPE_MAP.get(shift["shift_type"], ""),
+                "training": shift.get("training", False)
+            })
+        
+        leave_res = supabase.table("leaves") \
+            .select("*") \
+            .eq("emp_id", emp["emp_id"]) \
+            .gte("leave_start_date", dates[0]) \
+            .lte("leave_end_date", dates[-1]) \
+            .execute()
+        leaves = leave_res.data or []
+        print(leaves)
+        leave_map = {}
+
+        for leave in leaves:
+            start = datetime.fromisoformat(leave["leave_start_date"]).date()
+            end = datetime.fromisoformat(leave["leave_end_date"]).date()
+
+            d = start
+            while d <= end:
+                leave_map[d] = leave
+                d += timedelta(days=1)
+
+        for idx,d in enumerate(dates):
+            if d in leave_map:
+                leave = leave_map[d]
+
+                leave_type = leave.get("leave_type", "").lower()
+                
+                # Determine shift type (color)
+                if leave_type == "sick paid" or leave_type == "sick unpaid":
+                    shift_type = SHIFT_TYPE_MAP["sick"]
+                elif leave_type == "maternity/paternity leave" or leave_type == "wsib leave (with seniority)" or leave_type == "esa leave + seniority" or leave_type == "unpaid leave + no seniority":
+                    shift_type = SHIFT_TYPE_MAP["leave"]
+                elif leave_type == "bereavement paid" or leave_type == "bereavement unpaid":
+                    shift_type = SHIFT_TYPE_MAP["bereavement"]
+                elif leave_type == "vacation ft hourly - pay only" or leave_type == "vacation pt and casual - seniority only":  # keeping your DB spelling
+                    shift_type = SHIFT_TYPE_MAP["vacation"]
+                elif leave_type == "float day":
+                    shift_type = SHIFT_TYPE_MAP["float"]
+                else:
+                    shift_type = SHIFT_TYPE_MAP["unavailability"]
+
+                # Override shift
+                shifts[idx]={
+                    "time": "",              # no d/n/e for leave
+                    "type": shift_type,
+                    "training": False
+                }
+                continue
+
+        
+        output_employees.append({
+        "id": emp["emp_id"],
+        "name": emp["first_name"],
+        "address": emp["address"],
+        "shifts": shifts
+        })
+
+    data= jsonify({
+        "weeks": [d.strftime("%d-%b") for d in dates],
+        "employees": output_employees
+    })
+    print(data)
+    return data
+
+SHIFT_CONVENTIONS = {
+    "85 Neeve": {"day": "d", "noon": "n", "evening": "e"},
+    "87 Neeve": {"day": "d",  "noon": "n",  "evening": "e"},
+    "Willow Place": {"day": "D", "noon": "N", "evening": "E"},
+    "Outreach": None  # handled separately
+}
+SHIFT_TYPE_MAP = {
+    "vacation": "vacation",
+    "float": "float",
+    "unavailability": "unavailable",
+    "flw-training": "flw-training",
+    "gil-training": "gil",
+    "flw-rtw": "flw-rtw",
+    "open": "open",
+    "leave": "leave",
+    "sick": "sick",
+    "bereavement": "bereavement",
+}
+def get_6_week_dates(start_date: date):
+    return [start_date + timedelta(days=i) for i in range(42)]
+
+
 # --- Run ---
 if __name__ == '__main__':
     app.run(debug=True)
