@@ -11,6 +11,10 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import calendar
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = 'seckey257'
@@ -27,10 +31,34 @@ firebase_admin.initialize_app(cred)
 # schedule display
 @app.route('/scheduled', methods=['GET'])
 def schedule():
-    clients = supabase.table("client").select("*").execute()
-    employees = supabase.table("employee").select("*").execute()
-    shifts = supabase.table("shift").select("*").execute()
-    daily_shifts = supabase.table("daily_shift").select("*").execute()
+    # Get optional service parameter for filtering
+    service = request.args.get('service', None)
+    
+    # If service is provided, filter by service_type
+    if service:
+        clients = supabase.table("client").select("*").eq("service_type", service).execute()
+        employees = supabase.table("employee").select("*").eq("service_type", service).execute()
+        
+        # Get client_ids and emp_ids for filtering shifts
+        client_ids = [c["client_id"] for c in clients.data] if clients.data else []
+        emp_ids = [e["emp_id"] for e in employees.data] if employees.data else []
+        
+        # Filter shifts based on clients and employees in this service
+        if client_ids:
+            shifts = supabase.table("shift").select("*").in_("client_id", client_ids).execute()
+        else:
+            shifts = supabase.table("shift").select("*").limit(0).execute()
+            
+        if emp_ids:
+            daily_shifts = supabase.table("daily_shift").select("*").in_("emp_id", emp_ids).execute()
+        else:
+            daily_shifts = supabase.table("daily_shift").select("*").limit(0).execute()
+    else:
+        # No filter, return all data
+        clients = supabase.table("client").select("*").execute()
+        employees = supabase.table("employee").select("*").execute()
+        shifts = supabase.table("shift").select("*").execute()
+        daily_shifts = supabase.table("daily_shift").select("*").execute()
 
     datatosend = {
         "client": clients.data,
@@ -580,7 +608,7 @@ def get_employees():
 
 
         if response:
-            return response
+            return jsonify({"employee": response})
         return jsonify({"error": str(response)}), 400
     
     except Exception as e:
@@ -646,14 +674,16 @@ def get_employees_with_status():
             leaves,
             
         )
-
-        result.append({
-            "emp_id": emp["emp_id"],
-            "first_name": emp["first_name"],
-            "last_name": emp.get("last_name", ""),
-            "service_type": emp.get("service_type"),
-            "status": status
+        
+        # Create a copy of emp to avoid mutating the original if needed, 
+        # though here we are just appending to result
+        emp_data = emp.copy()
+        emp_data.update({
+            "status_label": status["label"],
+            "status_color": status["color"]
         })
+
+        result.append(emp_data)
 
     return result
         

@@ -131,27 +131,27 @@ const EmployeeDetailsEach = () => {
                         //    className="shift-block bg-primary bg-opacity-75 text-white rounded p-1"
                         //    style={{ top, height }}
                         //    key={shift.shift_id}>
-                            <OverlayTrigger
-                                placement="top"
-                                overlay={
-                                    <Tooltip>
-                                        {shift.shift_start_time.slice(11, 16)} – {shift.shift_end_time.slice(11, 16)}
-                                        <br />
-                                        Client ID: {shift.client_id}
-                                    </Tooltip>
-                                }>
-                                <div
-                                    className="shift-block bg-primary text-white rounded"
-                                    style={{
-                                        top,
-                                        height,
-                                        zIndex: 10,
-                                        position: "absolute",
-                                        cursor: "pointer",
-                                        opacity: 0.9
-                                    }}
-                                ></div>
-                            </OverlayTrigger>
+                        <OverlayTrigger
+                            placement="top"
+                            overlay={
+                                <Tooltip>
+                                    {shift.shift_start_time.slice(11, 16)} – {shift.shift_end_time.slice(11, 16)}
+                                    <br />
+                                    Client ID: {shift.client_id}
+                                </Tooltip>
+                            }>
+                            <div
+                                className="shift-block bg-primary text-white rounded"
+                                style={{
+                                    top,
+                                    height,
+                                    zIndex: 10,
+                                    position: "absolute",
+                                    cursor: "pointer",
+                                    opacity: 0.9
+                                }}
+                            ></div>
+                        </OverlayTrigger>
 
                         //    <div className="fw-bold" >
                         //        {shift.shift_start_time.slice(11, 16)} – {shift.shift_end_time.slice(11, 16)}
@@ -222,7 +222,7 @@ const EmployeeDetailsEach = () => {
                         <h3 className="fw-bold">
                             {employee.first_name} {employee.last_name}
                         </h3>
-                        <span className="badge bg-success">{employee.status}</span>
+                        <span className="badge bg-success">{employee.status_label || employee.status || 'N/A'}</span>
                         <div className="text-muted small mt-2">
                             {employee.designation} • {employee.city} •{" "}
                             {employee.service_type} • <strong>Emp ID:</strong>{" "}
@@ -315,18 +315,21 @@ const EmployeeDetailsEach = () => {
                                             .map((seg, idx) => (
                                                 <div
                                                     key={`ds-${idx}`}
-                                                    className="shift-block bg-info bg-opacity-25 rounded"
+                                                    className="shift-block bg-info bg-opacity-25 rounded p-2"
                                                     style={{
                                                         top: getPosition(seg.item.shift_start_time),
                                                         height:
                                                             getPosition(seg.item.shift_end_time) -
                                                             getPosition(seg.item.shift_start_time),
-                                                        zIndex: 1,         // 🔥 Push it behind client shifts
-                                                        position: "absolute"
+                                                        zIndex: 1,
+                                                        position: "absolute",
+                                                        fontSize: "0.75rem"
                                                     }}
                                                 >
-                                                    <strong className="text-primary">Daily Shift</strong><br></br>
-                                                    <span>{seg.item.shift_start_time} - {seg.item.shift_end_time}</span>
+                                                    <div className="fw-bold text-primary">Daily Shift</div>
+                                                    <div className="text-dark">
+                                                        {seg.item.shift_start_time.slice(11, 16)} - {seg.item.shift_end_time.slice(11, 16)}
+                                                    </div>
                                                 </div>
 
                                             ))}
@@ -338,45 +341,45 @@ const EmployeeDetailsEach = () => {
                 )}
                 {showtab.overview && (
                     <div>
-                    <div className="d-flex align-items-center">
-                    <img
-                        src="https://via.placeholder.com/80"
-                        className="rounded-circle me-3"
-                        alt="Employee"
-                    />
-                    <div>
-                        <h5 className="fw-bold">
-                            {employee.first_name} {employee.last_name}
-                        </h5>
-                        <div className="text-muted small mt-2">
-                            {employee.designation}</div>
-                        <div className="text-muted small mt-2">{employee.city}</div>
-                        <div className="text-muted small mt-2">{employee.service_type}</div>
-                        <div className="text-muted small mt-2"><strong>Emp ID:</strong>{employee.emp_id}</div>
-                        
-                    </div>
-                </div>
-                    <div className="mt-2 border-bottom pb-1 d-flex gap-3 fw">
-                        {[
-                            "employee_notes",
-                            "contacts",
-                            "ratings",
-                            "attachments",
-                            "contact_tracking",
-                        ].map((tab2) => (
-                            <span
-                                key={tab2}
-                                className={`tab ${showsubtab[tab2] ? "text-primary border-bottom" : ""}`}
-                                style={{ cursor: "pointer" }}
-                                onClick={() => handleShowsub(tab2)}
-                            >
-                                {tab2.charAt(0).toUpperCase() + tab2.slice(1)}
-                            </span>
-                        ))}</div>  
+                        <div className="d-flex align-items-center">
+                            <img
+                                src="https://via.placeholder.com/80"
+                                className="rounded-circle me-3"
+                                alt="Employee"
+                            />
+                            <div>
+                                <h5 className="fw-bold">
+                                    {employee.first_name} {employee.last_name}
+                                </h5>
+                                <div className="text-muted small mt-2">
+                                    {employee.designation}</div>
+                                <div className="text-muted small mt-2">{employee.city}</div>
+                                <div className="text-muted small mt-2">{employee.service_type}</div>
+                                <div className="text-muted small mt-2"><strong>Emp ID:</strong>{employee.emp_id}</div>
+
+                            </div>
+                        </div>
+                        <div className="mt-2 border-bottom pb-1 d-flex gap-3 fw">
+                            {[
+                                "employee_notes",
+                                "contacts",
+                                "ratings",
+                                "attachments",
+                                "contact_tracking",
+                            ].map((tab2) => (
+                                <span
+                                    key={tab2}
+                                    className={`tab ${showsubtab[tab2] ? "text-primary border-bottom" : ""}`}
+                                    style={{ cursor: "pointer" }}
+                                    onClick={() => handleShowsub(tab2)}
+                                >
+                                    {tab2.charAt(0).toUpperCase() + tab2.slice(1)}
+                                </span>
+                            ))}</div>
                     </div>
                 )}
                 {showtab.overview && showsubtab.attachments && <EmployeeAttachments emp={employee} />}
-                {showtab.employment  && <div className="d-flex mt-4">
+                {showtab.employment && <div className="d-flex mt-4">
 
                     {/* LEFT SIDEBAR */}
                     <div className="border-end pe-4" style={{ width: "220px" }}>

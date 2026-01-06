@@ -14,11 +14,15 @@ export default function SchedulePage() {
 
   useEffect(() => {
     fetchScheduleData();
-  }, []);
+  }, [selectedLocation]); // Re-fetch when location changes
 
   const fetchScheduleData = async () => {
     try {
-      const response = await axios.get('http://127.0.0.1:5000/scheduled');
+      setLoading(true);
+      // Pass the selected location as a service parameter to filter the data
+      const response = await axios.get('http://127.0.0.1:5000/scheduled', {
+        params: { service: selectedLocation }
+      });
       setScheduleData(response.data.shift || []);
       setEmployees(response.data.employee || []);
       setLoading(false);

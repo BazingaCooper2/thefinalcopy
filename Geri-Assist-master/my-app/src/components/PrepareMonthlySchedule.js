@@ -8,6 +8,7 @@ function GenerateShifts({ empId }) {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [activeTab, setActiveTab] = useState('employee');
+  const [locationFilter, setLocationFilter] = useState("");
 
   useEffect(() => {
     const fetchData = async () => {
@@ -133,6 +134,34 @@ function GenerateShifts({ empId }) {
     }
   };
 
+  // Helper to check if an item matches the location filter
+  const checkLocationMatch = (item, filter) => {
+    if (!filter) return true;
+    const filterLower = filter.toLowerCase();
+
+    // Check various fields where location info might be stored
+    const city = item.city ? item.city.toLowerCase() : '';
+    const address = item.address_line1 ? item.address_line1.toLowerCase() : '';
+    const service = item.service_type ? item.service_type.toLowerCase() : '';
+    const group = item.client_group ? item.client_group.toLowerCase() : ''; // For clients
+    const program = item.program_group ? item.program_group.toLowerCase() : ''; // For clients
+    const location = item.location ? item.location.toLowerCase() : '';
+    const site = item.site ? item.site.toLowerCase() : '';
+
+    // General check for all filters
+    return city === filterLower ||
+      address.includes(filterLower) ||
+      service.includes(filterLower) ||
+      group.includes(filterLower) ||
+      program.includes(filterLower) ||
+      location.includes(filterLower) ||
+      site.includes(filterLower);
+  };
+
+  // Filter employees and clients based on location
+  const filteredEmployees = employees.filter(emp => checkLocationMatch(emp, locationFilter));
+  const filteredClients = clients.filter(client => checkLocationMatch(client, locationFilter));
+
   if (loading && employees.length === 0) {
     return (
       <div className="d-flex justify-content-center align-items-center" style={{ minHeight: 'calc(100vh - 60px)' }}>
@@ -208,7 +237,25 @@ function GenerateShifts({ empId }) {
                 <h5 className="mb-1">Prepare Employee Shifts</h5>
                 <p className="text-muted small mb-0">Select employees to automatically create daily shifts based on their timeline.</p>
               </div>
-              <div className="d-flex gap-2">
+              <div className="d-flex gap-2 align-items-center">
+                <div className="d-flex align-items-center gap-2">
+                  <label className="text-muted small mb-0" style={{ whiteSpace: 'nowrap' }}>
+                    <i className="bi bi-geo-alt me-1"></i>
+                    Filter by Location:
+                  </label>
+                  <select
+                    className="form-select form-select-sm"
+                    value={locationFilter}
+                    onChange={(e) => setLocationFilter(e.target.value)}
+                    style={{ width: '160px' }}
+                  >
+                    <option value="">All Locations</option>
+                    <option value="Outreach">Outreach</option>
+                    <option value="85 Neeve">85 Neeve</option>
+                    <option value="87 Neeve">87 Neeve</option>
+                    <option value="Willow Place">Willow Place</option>
+                  </select>
+                </div>
                 <button className="btn-modern btn-outline btn-sm" onClick={selectAllEmployees}>
                   {selectedEmployees.length === employees.length ? 'Deselect All' : 'Select All'}
                 </button>
@@ -238,11 +285,12 @@ function GenerateShifts({ empId }) {
                     <th>ID</th>
                     <th>Employee Name</th>
                     <th>Service Type</th>
+                    <th>Location</th>
                     <th>Status</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {employees.map((emp) => (
+                  {filteredEmployees.map((emp) => (
                     <tr key={emp.emp_id} onClick={() => handleCheckboxChange(emp.emp_id)} style={{ cursor: 'pointer' }}>
                       <td>
                         <input
@@ -257,12 +305,18 @@ function GenerateShifts({ empId }) {
                       <td className="fw-semibold">{emp.first_name} {emp.last_name}</td>
                       <td>{emp.service_type || "-"}</td>
                       <td>
+                        <span className="badge" style={{ background: 'var(--info-light)', color: 'var(--info-dark)' }}>
+                          <i className="bi bi-geo-alt me-1"></i>
+                          {emp.city || "No Location"}
+                        </span>
+                      </td>
+                      <td>
                         <span className="badge" style={{
-                          background: emp.status === "Available" ? 'var(--success-gradient)' :
-                            emp.status === "On Leave" ? 'var(--warning-gradient)' : 'var(--gray-400)',
+                          background: (emp.status_label || emp.status) === "Available" ? 'var(--success-gradient)' :
+                            (emp.status_label || emp.status) === "On Leave" ? 'var(--warning-gradient)' : 'var(--gray-400)',
                           color: 'white'
                         }}>
-                          {emp.status || "N/A"}
+                          {emp.status_label || emp.status || "N/A"}
                         </span>
                       </td>
                     </tr>
@@ -278,7 +332,25 @@ function GenerateShifts({ empId }) {
                 <h5 className="mb-1">Prepare Client Shifts</h5>
                 <p className="text-muted small mb-0">Select clients to automatically create daily shifts based on their timeline.</p>
               </div>
-              <div className="d-flex gap-2">
+              <div className="d-flex gap-2 align-items-center">
+                <div className="d-flex align-items-center gap-2">
+                  <label className="text-muted small mb-0" style={{ whiteSpace: 'nowrap' }}>
+                    <i className="bi bi-geo-alt me-1"></i>
+                    Filter by Location:
+                  </label>
+                  <select
+                    className="form-select form-select-sm"
+                    value={locationFilter}
+                    onChange={(e) => setLocationFilter(e.target.value)}
+                    style={{ width: '160px' }}
+                  >
+                    <option value="">All Locations</option>
+                    <option value="Outreach">Outreach</option>
+                    <option value="85 Neeve">85 Neeve</option>
+                    <option value="87 Neeve">87 Neeve</option>
+                    <option value="Willow Place">Willow Place</option>
+                  </select>
+                </div>
                 <button className="btn-modern btn-outline btn-sm" onClick={selectAllClients}>
                   {selectedClients.length === clients.length ? 'Deselect All' : 'Select All'}
                 </button>
@@ -308,11 +380,12 @@ function GenerateShifts({ empId }) {
                     <th>ID</th>
                     <th>Client Name</th>
                     <th>Service Type</th>
+                    <th>Location</th>
                     <th>Group</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {clients.map((cl) => (
+                  {filteredClients.map((cl) => (
                     <tr key={cl.client_id} onClick={() => handleClientCheckboxChange(cl.client_id)} style={{ cursor: 'pointer' }}>
                       <td>
                         <input
@@ -326,6 +399,12 @@ function GenerateShifts({ empId }) {
                       <td><span className="badge" style={{ background: 'var(--gray-200)', color: 'var(--gray-700)' }}>#{cl.client_id}</span></td>
                       <td className="fw-semibold">{cl.first_name} {cl.last_name}</td>
                       <td>{cl.service_type || "-"}</td>
+                      <td>
+                        <span className="badge" style={{ background: 'var(--info-light)', color: 'var(--info-dark)' }}>
+                          <i className="bi bi-geo-alt me-1"></i>
+                          {cl.city || "No Location"}
+                        </span>
+                      </td>
                       <td><span className="badge" style={{ background: 'var(--info-gradient)', color: 'white' }}>{cl.client_group || "General"}</span></td>
                     </tr>
                   ))}
