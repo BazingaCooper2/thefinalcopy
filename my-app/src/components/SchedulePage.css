@@ -1,0 +1,119 @@
+/* basic layout */
+.schedule-wrapper {
+  padding: 12px;
+  font-family: Arial, sans-serif;
+}
+.schedule-wrapper {
+  width: 100%;
+  overflow-x: auto; /* enables horizontal scroll */
+}
+
+.schedule-table {
+  min-width: 1200px; /* force table wider than viewport */
+  border-collapse: collapse;
+  text-align: center;
+}
+
+
+
+/* Top header row: fixed employee column + timeline column */
+.header-row {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  align-items: stretch;
+  margin-bottom: 6px;
+}
+
+/* left column for header */
+.header-employee {
+  background: #f8f9fa;
+  border: 1px solid #e6e9ee;
+  display:flex; align-items:center; justify-content:center;
+  font-weight:700;
+  padding: 10px;
+}
+
+/* timeline header container: we use its own grid with minute columns */
+.header-timeline { overflow: hidden; }
+.hours-grid {
+  display: grid;
+  /* one column per minute */
+  grid-template-columns: repeat(1020, 1fr); /* (endHour-startHour)*60 -> 16*60=960 */
+  align-items: center;
+}
+.header-hour {
+  text-align: center;
+  border-left: 1px solid #e8e9ed;
+  font-weight: 700;
+  padding: 6px 2px;
+  background: #fff;
+}
+
+/* body rows container */
+.body-rows { }
+
+/* each schedule-row keeps the employee name fixed on left and a timeline grid on right */
+.schedule-row {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  align-items: center;
+  min-height: 60px;
+}
+
+/* employee name cell */
+.employee-cell {
+  padding: 10px;
+  border-right: 1px solid #e6e9ee;
+  background: #f6f7f9;
+  font-weight: 600;
+}
+
+/* timeline grid for each row (minute columns) */
+.timeline-row {
+  display: grid;
+  grid-template-columns: repeat(1020, 1fr); /* same minute-count */
+  align-items: center;
+  background: #f2f4f6;
+  min-height: 60px;
+}
+
+/* segments */
+.empty-cell {
+  background: transparent;
+  border-left: 1px solid rgba(0,0,0,0.03);
+  min-height: 60px;
+}
+
+/* shift tiles (employee shifts) */
+.employee-shift {
+  background: #6c757d;
+  color: #fff;
+  border: 1px solid rgba(0,0,0,0.08);
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  padding:6px;
+  box-sizing:border-box;
+  border-radius:4px;
+  margin: 2px;
+}
+
+/* appointment tiles (client visits) */
+.client-shift {
+  background: #007bff;
+  color: #fff;
+  border: 1px solid rgba(0,0,0,0.08);
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  padding:6px;
+  box-sizing:border-box;
+  border-radius:4px;
+  margin: 2px;
+}
+
+/* small helpers */
+.shift-cell { font-size: 12px; line-height: 1.1; text-align:center; }
+.shift-time { font-weight:700; margin-bottom:4px; }
+.shift-desc { font-size: 11px; opacity: 0.95; }
+
