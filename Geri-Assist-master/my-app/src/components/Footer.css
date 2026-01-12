@@ -1,0 +1,270 @@
+.geri-footer {
+    background: linear-gradient(135deg, #e8ebf9 0%, #ddd6f3 100%);
+    color: #4a3a7a;
+    margin-top: auto;
+    width: 100%;
+}
+
+.footer-container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 60px 40px 40px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 40px;
+}
+
+.footer-column {
+    display: flex;
+    flex-direction: column;
+}
+
+.footer-heading {
+    font-size: 16px;
+    font-weight: 700;
+    color: #3d2a5f;
+    margin-bottom: 20px;
+    text-transform: capitalize;
+    letter-spacing: 0.3px;
+}
+
+.footer-links {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.footer-links li {
+    margin-bottom: 12px;
+}
+
+.footer-links a {
+    color: #5a4782;
+    text-decoration: none;
+    font-size: 14px;
+    transition: all 0.3s ease;
+    display: inline-block;
+}
+
+.footer-links a:hover {
+    color: #667eea;
+    transform: translateX(5px);
+}
+
+.footer-contact-info {
+    margin-top: 20px;
+}
+
+.footer-contact-info p {
+    font-size: 13px;
+    margin-bottom: 10px;
+    color: #5a4782;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.footer-contact-info i {
+    color: #667eea;
+    font-size: 14px;
+}
+
+.footer-bottom {
+    background: rgba(102, 126, 234, 0.08);
+    border-top: 1px solid rgba(102, 126, 234, 0.2);
+    padding: 30px 40px;
+}
+
+.footer-bottom-content {
+    max-width: 1400px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 30px;
+    align-items: center;
+}
+
+.footer-logo-section {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.footer-logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 28px;
+    font-weight: 700;
+    color: #667eea;
+}
+
+.footer-logo i {
+    font-size: 36px;
+    color: #667eea;
+}
+
+.footer-tagline {
+    font-size: 13px;
+    color: #5a4782;
+    margin: 0;
+    font-style: italic;
+}
+
+.footer-app-section {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    align-items: flex-start;
+}
+
+.footer-app-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #3d2a5f;
+    margin: 0;
+}
+
+.app-badges {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.app-badge {
+    display: block;
+    transition: transform 0.3s ease;
+}
+
+.app-badge:hover {
+    transform: translateY(-3px);
+}
+
+.app-badge img {
+    height: 40px;
+    width: auto;
+}
+
+.footer-social-section {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    align-items: flex-start;
+}
+
+.footer-social-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #3d2a5f;
+    margin: 0;
+}
+
+.social-icons {
+    display: flex;
+    gap: 15px;
+}
+
+.social-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: rgba(102, 126, 234, 0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #667eea;
+    font-size: 18px;
+    transition: all 0.3s ease;
+    text-decoration: none;
+}
+
+.social-icon:hover {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    transform: translateY(-3px);
+    box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+}
+
+.footer-copyright {
+    background: rgba(102, 126, 234, 0.05);
+    text-align: center;
+    padding: 20px;
+    border-top: 1px solid rgba(102, 126, 234, 0.15);
+}
+
+.footer-copyright p {
+    margin: 0;
+    font-size: 13px;
+    color: #5a4782;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .footer-container {
+        grid-template-columns: repeat(2, 1fr);
+        padding: 40px 20px 30px;
+        gap: 30px;
+    }
+
+    .footer-bottom {
+        padding: 20px;
+    }
+
+    .footer-bottom-content {
+        grid-template-columns: 1fr;
+        text-align: center;
+    }
+
+    .footer-logo-section {
+        align-items: center;
+    }
+
+    .footer-app-section {
+        align-items: center;
+    }
+
+    .footer-social-section {
+        align-items: center;
+    }
+
+    .app-badges {
+        justify-content: center;
+    }
+}
+
+@media (max-width: 480px) {
+    .footer-container {
+        grid-template-columns: 1fr;
+    }
+
+    .footer-heading {
+        font-size: 15px;
+    }
+
+    .footer-links a {
+        font-size: 13px;
+    }
+
+    .app-badge img {
+        height: 35px;
+    }
+}
+
+/* Animation */
+.footer-links a,
+.social-icon,
+.app-badge {
+    animation: fadeInUp 0.5s ease-out;
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}

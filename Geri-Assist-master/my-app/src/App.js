@@ -1,5 +1,6 @@
 import Sidebar from './components/Sidebar';
 import Navbar from './components/Navbar';
+import Footer from './components/Footer';
 import Dashboard from './components/Dashboard';
 import SchedulePage from './components/SchedulePage';
 import Login from './components/Login';
@@ -26,21 +27,24 @@ function App() {
           <div style={{ width: '250px', flexShrink: 0 }} className="d-none d-md-block">
             <Sidebar />
           </div>
-          <div className="flex-grow-1" style={{ overflowY: 'auto', overflowX: 'hidden' }}>
-            <Routes>
-              <Route path="/" element={<Dashboard />}></Route>
-              <Route path="/schedule" element={<SchedulePage />}></Route>
-              <Route path="/login" element={<Login />}></Route>
-              <Route path="/register" element={<Register />}></Route>
-              <Route path="/client" element={<ClientDetailsPage />}></Route>
-              <Route path="/employee" element={<EmployeeDetails />}></Route>
-              <Route path="/injuryReport" element={<InjuryReportPage />}></Route>
-              <Route path="/fillInjuryReport" element={<InjuryReportForm />}></Route>
-              <Route path="/monthlySchedule" element={<GenerateShifts />}></Route>
-              <Route path="/addShift" element={<AddShift />}></Route>
-              <Route path="/employee/:id" element={<EmployeeDetailsEach />} />
-              <Route path="/masterSchedule" element={<MasterSchedule />}></Route>
-            </Routes>
+          <div className="flex-grow-1" style={{ overflowY: 'auto', overflowX: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ flex: '1' }}>
+              <Routes>
+                <Route path="/" element={<Dashboard />}></Route>
+                <Route path="/schedule" element={<SchedulePage />}></Route>
+                <Route path="/login" element={<Login />}></Route>
+                <Route path="/register" element={<Register />}></Route>
+                <Route path="/client" element={<ClientDetailsPage />}></Route>
+                <Route path="/employee" element={<EmployeeDetails />}></Route>
+                <Route path="/injuryReport" element={<InjuryReportPage />}></Route>
+                <Route path="/fillInjuryReport" element={<InjuryReportForm />}></Route>
+                <Route path="/monthlySchedule" element={<GenerateShifts />}></Route>
+                <Route path="/addShift" element={<AddShift />}></Route>
+                <Route path="/employee/:id" element={<EmployeeDetailsEach />} />
+                <Route path="/masterSchedule" element={<MasterSchedule />}></Route>
+              </Routes>
+            </div>
+            <Footer />
           </div>
         </div>
         {/* Mobile Bottom Navigation */}

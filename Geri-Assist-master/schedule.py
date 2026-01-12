@@ -33,32 +33,46 @@ firebase_admin.initialize_app(cred)
 def schedule():
     # Get optional service parameter for filtering
     service = request.args.get('service', None)
+    date_filter = request.args.get('date', None)
     
+    # Build base queries
+    clients_query = supabase.table("client").select("*")
+    employees_query = supabase.table("employee").select("*")
+    shifts_query = supabase.table("shift").select("*")
+    daily_shifts_query = supabase.table("daily_shift").select("*")
+
     # If service is provided, filter by service_type
     if service:
-        clients = supabase.table("client").select("*").eq("service_type", service).execute()
-        employees = supabase.table("employee").select("*").eq("service_type", service).execute()
+        clients_query = clients_query.eq("service_type", service)
+        employees_query = employees_query.eq("service_type", service)
         
-        # Get client_ids and emp_ids for filtering shifts
-        client_ids = [c["client_id"] for c in clients.data] if clients.data else []
-        emp_ids = [e["emp_id"] for e in employees.data] if employees.data else []
-        
-        # Filter shifts based on clients and employees in this service
+    clients = clients_query.execute()
+    employees = employees_query.execute()
+    
+    # Get client_ids and emp_ids for filtering shifts
+    client_ids = [c["client_id"] for c in clients.data] if clients.data else []
+    emp_ids = [e["emp_id"] for e in employees.data] if employees.data else []
+    
+    # Filter shifts based on clients and employees in this service
+    if service:
         if client_ids:
-            shifts = supabase.table("shift").select("*").in_("client_id", client_ids).execute()
+            shifts_query = shifts_query.in_("client_id", client_ids)
         else:
-            shifts = supabase.table("shift").select("*").limit(0).execute()
+            shifts_query = shifts_query.limit(0)
             
         if emp_ids:
-            daily_shifts = supabase.table("daily_shift").select("*").in_("emp_id", emp_ids).execute()
+            daily_shifts_query = daily_shifts_query.in_("emp_id", emp_ids)
         else:
-            daily_shifts = supabase.table("daily_shift").select("*").limit(0).execute()
-    else:
-        # No filter, return all data
-        clients = supabase.table("client").select("*").execute()
-        employees = supabase.table("employee").select("*").execute()
-        shifts = supabase.table("shift").select("*").execute()
-        daily_shifts = supabase.table("daily_shift").select("*").execute()
+            daily_shifts_query = daily_shifts_query.limit(0)
+
+    # Apply date filtering if provided
+    if date_filter:
+        # Assuming date format YYYY-MM-DD
+        shifts_query = shifts_query.eq("date", date_filter)
+        daily_shifts_query = daily_shifts_query.eq("shift_date", date_filter)
+
+    shifts = shifts_query.execute()
+    daily_shifts = daily_shifts_query.execute()
 
     datatosend = {
         "client": clients.data,
@@ -679,8 +693,10 @@ def get_employees_with_status():
         # though here we are just appending to result
         emp_data = emp.copy()
         emp_data.update({
-            "status_label": status["label"],
-            "status_color": status["color"]
+            "status": {
+                "label": status["label"],
+                "color": status["color"]
+            }
         })
 
         result.append(emp_data)

@@ -312,11 +312,11 @@ function GenerateShifts({ empId }) {
                       </td>
                       <td>
                         <span className="badge" style={{
-                          background: (emp.status_label || emp.status) === "Available" ? 'var(--success-gradient)' :
-                            (emp.status_label || emp.status) === "On Leave" ? 'var(--warning-gradient)' : 'var(--gray-400)',
+                          background: (emp.status?.label || emp.status) === "Available" ? 'var(--success-gradient)' :
+                            (emp.status?.label || emp.status) === "On Leave" ? 'var(--warning-gradient)' : 'var(--gray-400)',
                           color: 'white'
                         }}>
-                          {emp.status_label || emp.status || "N/A"}
+                          {emp.status?.label || emp.status || "N/A"}
                         </span>
                       </td>
                     </tr>

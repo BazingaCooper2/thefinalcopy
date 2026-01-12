@@ -186,7 +186,7 @@ const EmployeeDetails = () => {
         </div>
         <div className="col-md-3">
           <div className="dashboard-card card-green">
-            <div className="dashboard-card-value">{employees.filter(e => (e.status_label || e.status) === 'Available').length}</div>
+            <div className="dashboard-card-value">{employees.filter(e => (e.status?.label || e.status) === 'Available').length}</div>
             <div className="dashboard-card-label">Available Now</div>
           </div>
         </div>
@@ -198,7 +198,7 @@ const EmployeeDetails = () => {
         </div>
         <div className="col-md-3">
           <div className="dashboard-card card-cyan">
-            <div className="dashboard-card-value">{employees.filter(e => (e.status_label || e.status) === 'On Leave' || (e.status_label || e.status) === 'Sick').length}</div>
+            <div className="dashboard-card-value">{employees.filter(e => (e.status?.label || e.status) === 'On Leave' || (e.status?.label || e.status) === 'Sick').length}</div>
             <div className="dashboard-card-label">On Leave</div>
           </div>
         </div>
@@ -314,7 +314,7 @@ const EmployeeDetails = () => {
                       {getCrossTrainingBadges(emp.cross_training || ['WP'])}
                     </td>
                     <td>
-                      {getStatusBadge(emp.status_label || emp.status, emp.offer_status)}
+                      {getStatusBadge(emp.status?.label || emp.status, emp.offer_status)}
                     </td>
                     <td>
                       {getCapacityBar(emp.hours_worked || 0, emp.weekly_capacity || 40)}

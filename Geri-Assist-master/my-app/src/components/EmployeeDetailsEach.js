@@ -222,7 +222,7 @@ const EmployeeDetailsEach = () => {
                         <h3 className="fw-bold">
                             {employee.first_name} {employee.last_name}
                         </h3>
-                        <span className="badge bg-success">{employee.status_label || employee.status || 'N/A'}</span>
+                        <span className="badge bg-success">{employee.status?.label || employee.status_label || employee.status || 'N/A'}</span>
                         <div className="text-muted small mt-2">
                             {employee.designation} • {employee.city} •{" "}
                             {employee.service_type} • <strong>Emp ID:</strong>{" "}
