@@ -1,0 +1,26 @@
+remote: error: GH013: Repository rule violations found for refs/heads/feature/latest-updates.        
+remote: 
+remote: - GITHUB PUSH PROTECTION        
+remote:   ΓÇöΓÇöΓÇöΓÇöΓÇöΓÇöΓÇöΓÇöΓÇöΓÇöΓÇöΓÇöΓÇöΓÇöΓÇöΓÇöΓÇöΓÇöΓÇöΓÇöΓÇöΓÇöΓÇöΓÇöΓÇöΓÇöΓÇöΓÇöΓÇöΓÇöΓÇöΓÇöΓÇöΓÇöΓÇöΓÇöΓÇöΓÇöΓÇöΓÇöΓÇö        
+remote:     Resolve the following violations before pushing again        
+remote: 
+remote:     - Push cannot contain secrets        
+remote: 
+remote:             
+remote:      (?) Learn how to resolve a blocked push        
+remote:      https://docs.github.com/code-security/secret-scanning/working-with-secret-scanning-and-push-protection/working-with-push-protection-from-the-command-line#resolving-a-blocked-push        
+remote:             
+remote:             
+remote:       ΓÇöΓÇö Google Cloud Service Account Credentials ΓÇöΓÇöΓÇöΓÇöΓÇöΓÇöΓÇöΓÇöΓÇöΓÇö        
+remote:        locations:        
+remote:          - commit: 2d65c6546d70544eec721268d1bc551a8c886478        
+remote:            path: gerriapp-firebase-adminsdk-fbsvc-fe186b01ec.json:1        
+remote:             
+remote:        (?) To push, remove secret from commit(s) or follow this URL to allow the secret.        
+remote:        https://github.com/BazingaCooper2/myversion/security/secret-scanning/unblock-secret/38Cjf2ABuavU8QSJu3Y3WlUpATE        
+remote:             
+remote: 
+remote: 
+To https://github.com/BazingaCooper2/myversion.git
+ ! [remote rejected] feature/latest-updates -> feature/latest-updates (push declined due to repository rule violations)
+error: failed to push some refs to 'https://github.com/BazingaCooper2/myversion.git'
