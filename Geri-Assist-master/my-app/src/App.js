@@ -13,6 +13,7 @@ import InjuryReportForm from './components/fillInjuryReport.js';
 import GenerateShifts from './components/PrepareMonthlySchedule.js';
 import AddShift from './components/manualShiftAddition.js';
 import MasterSchedule from './components/MasterSchedule.js';
+import DailySchedule from './components/DailySchedule.js';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import React from 'react';
 
@@ -42,6 +43,7 @@ function App() {
                 <Route path="/addShift" element={<AddShift />}></Route>
                 <Route path="/employee/:id" element={<EmployeeDetailsEach />} />
                 <Route path="/masterSchedule" element={<MasterSchedule />}></Route>
+                <Route path="/dailySchedule" element={<DailySchedule />}></Route>
               </Routes>
             </div>
             <Footer />

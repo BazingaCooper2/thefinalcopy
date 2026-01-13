@@ -600,17 +600,17 @@ def get_clients():
         return jsonify({"error": str(e)}), 500
     
 STATUS_CONFIG = {
-    "TRAINING": {"label": "TRN", "color": "green"},
-    "FLW-RTW": {"label": "FLW", "color": "green"},
+    "TRAINING": {"label": "Training", "color": "green"},
+    "FLW-RTW": {"label": "Training", "color": "green"},
 
-    "LEAVE": {"label": "LV", "color": "red"},
+    "LEAVE": {"label": "On Leave", "color": "red"},
 
-    "CLOCKED_IN": {"label": "IN", "color": "orange"},
-    "CLOCKED_OUT": {"label": "OUT", "color": "aqua"},
+    "CLOCKED_IN": {"label": "Clocked In", "color": "orange"},
+    "CLOCKED_OUT": {"label": "Clocked Out", "color": "aqua"},
 
-    "OFFER_SENT": {"label": "OFR", "color": "purple"},
+    "OFFER_SENT": {"label": "Offer Sent", "color": "purple"},
 
-    "WAITING": {"label": "WT", "color": "gray"}
+    "WAITING": {"label": "Available", "color": "gray"}
 }
 
 @app.route('/employees', methods=['GET'])
@@ -682,21 +682,25 @@ def get_employees_with_status():
     result = []
 
     for emp in employees:
-        status = resolve_employee_status(
+        # Compute current shift/leave status
+        shift_status = resolve_employee_status(
             emp["emp_id"],
             shifts,
             leaves,
             
         )
         
-        # Create a copy of emp to avoid mutating the original if needed, 
-        # though here we are just appending to result
+        # Create a copy of emp to avoid mutating the original
         emp_data = emp.copy()
+        
+        # Preserve the database 'status' field for Active/Inactive determination
+        # and add the computed shift_status for display
         emp_data.update({
-            "status": {
-                "label": status["label"],
-                "color": status["color"]
+            "shift_status": {
+                "label": shift_status["label"],
+                "color": shift_status["color"]
             }
+            # Keep the original 'status' field from database
         })
 
         result.append(emp_data)

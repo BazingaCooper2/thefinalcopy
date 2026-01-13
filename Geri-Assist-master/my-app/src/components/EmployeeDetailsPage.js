@@ -68,14 +68,18 @@ const EmployeeDetails = () => {
       };
     }
 
+    // Normalize status to handle both capitalized and lowercase values
+    const normalizedStatus = status ? status.toLowerCase() : '';
+
     const statusConfig = {
-      'Available': { bg: 'var(--success-gradient)', icon: 'bi-check-circle-fill', label: 'Available' },
-      'Busy': { bg: 'var(--info-gradient)', icon: 'bi-clock-fill', label: 'Busy' },
-      'On Leave': { bg: 'var(--warning-gradient)', icon: 'bi-calendar-x', label: 'On Leave' },
-      'Sick': { bg: 'var(--danger-gradient)', icon: 'bi-bandaid-fill', label: 'Sick' },
-      'On Call': { bg: 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)', icon: 'bi-telephone-fill', label: 'On Call' },
+      'available': { bg: 'var(--success-gradient)', icon: 'bi-check-circle-fill', label: 'Available' },
+      'unavailable': { bg: 'var(--danger-gradient)', icon: 'bi-x-circle-fill', label: 'Unavailable' },
+      'busy': { bg: 'var(--info-gradient)', icon: 'bi-clock-fill', label: 'Busy' },
+      'on leave': { bg: 'var(--warning-gradient)', icon: 'bi-calendar-x', label: 'On Leave' },
+      'sick': { bg: 'var(--danger-gradient)', icon: 'bi-bandaid-fill', label: 'Sick' },
+      'on call': { bg: 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)', icon: 'bi-telephone-fill', label: 'On Call' },
     };
-    const config = statusConfig[status] || statusConfig['Available'];
+    const config = statusConfig[normalizedStatus] || { bg: 'var(--gray-400)', icon: 'bi-question-circle', label: status || 'Unknown' };
 
     return (
       <span className="badge d-inline-flex align-items-center gap-1 px-3 py-2" style={{ background: config.bg, color: 'white' }}>
@@ -141,6 +145,27 @@ const EmployeeDetails = () => {
     );
   };
 
+  const getActiveInactiveBadge = (emp) => {
+    // Use the database 'status' field to determine Active/Inactive
+    // If status is null/empty → Inactive
+    // If status is 'available' or 'unavailable' → Active
+    const dbStatus = emp.status;
+    const isActive = dbStatus !== null && dbStatus !== undefined && dbStatus !== '';
+
+    return (
+      <span
+        className="badge d-inline-flex align-items-center gap-1 px-3 py-2"
+        style={{
+          background: isActive ? 'var(--success-gradient)' : 'var(--gray-400)',
+          color: 'white'
+        }}
+      >
+        <i className={`bi ${isActive ? 'bi-check-circle-fill' : 'bi-x-circle-fill'}`}></i>
+        {isActive ? 'Active' : 'Inactive'}
+      </span>
+    );
+  };
+
   if (loading) {
     return (
       <div className="d-flex justify-content-center align-items-center" style={{ minHeight: 'calc(100vh - 60px)' }}>
@@ -186,7 +211,7 @@ const EmployeeDetails = () => {
         </div>
         <div className="col-md-3">
           <div className="dashboard-card card-green">
-            <div className="dashboard-card-value">{employees.filter(e => (e.status?.label || e.status) === 'Available').length}</div>
+            <div className="dashboard-card-value">{employees.filter(e => e.status && e.status.toLowerCase() === 'available').length}</div>
             <div className="dashboard-card-label">Available Now</div>
           </div>
         </div>
@@ -198,8 +223,8 @@ const EmployeeDetails = () => {
         </div>
         <div className="col-md-3">
           <div className="dashboard-card card-cyan">
-            <div className="dashboard-card-value">{employees.filter(e => (e.status?.label || e.status) === 'On Leave' || (e.status?.label || e.status) === 'Sick').length}</div>
-            <div className="dashboard-card-label">On Leave</div>
+            <div className="dashboard-card-value">{employees.filter(e => e.status && e.status.toLowerCase() === 'unavailable').length}</div>
+            <div className="dashboard-card-label">Unavailable</div>
           </div>
         </div>
       </div>
@@ -257,8 +282,8 @@ const EmployeeDetails = () => {
                   <th>Employee</th>
                   <th>Type</th>
                   <th>Contact</th>
-                  <th>Cross-Training</th>
                   <th>Status</th>
+                  <th>Active/Inactive</th>
                   <th>Capacity</th>
                   <th className="text-center">Actions</th>
                 </tr>
@@ -311,10 +336,10 @@ const EmployeeDetails = () => {
                       </div>
                     </td>
                     <td>
-                      {getCrossTrainingBadges(emp.cross_training || ['WP'])}
+                      {getStatusBadge(emp.status, emp.offer_status)}
                     </td>
                     <td>
-                      {getStatusBadge(emp.status?.label || emp.status, emp.offer_status)}
+                      {getActiveInactiveBadge(emp)}
                     </td>
                     <td>
                       {getCapacityBar(emp.hours_worked || 0, emp.weekly_capacity || 40)}
