@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import API_URL from '../config/api';
 
 function GenerateShifts({ empId }) {
   const [employees, setEmployees] = useState([]);
@@ -14,8 +15,8 @@ function GenerateShifts({ empId }) {
     const fetchData = async () => {
       try {
         const [empRes, clientRes] = await Promise.all([
-          fetch("http://127.0.0.1:5000/employees"),
-          fetch("http://127.0.0.1:5000/clients")
+          fetch(`${API_URL}/employees`),
+          fetch(`${API_URL}/clients`)
         ]);
 
         const empData = await empRes.json();
@@ -52,7 +53,7 @@ function GenerateShifts({ empId }) {
   const handlenewShiftSchedule = async () => {
     try {
       setLoading(true);
-      const response = await fetch("http://127.0.0.1:5000/newShiftSchedule", {
+      const response = await fetch(`${API_URL}/newShiftSchedule`, {
         method: "GET",
         headers: { "Content-Type": "application/json" },
       });
@@ -72,7 +73,7 @@ function GenerateShifts({ empId }) {
 
     for (let emp_id of selectedEmployees) {
       try {
-        const res = await fetch("http://127.0.0.1:5000/generate_next_month_shifts", {
+        const res = await fetch(`${API_URL}/generate_next_month_shifts`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ emp_id }),
@@ -98,7 +99,7 @@ function GenerateShifts({ empId }) {
 
     for (let client_id of selectedClients) {
       try {
-        const res = await fetch("http://127.0.0.1:5000/client_generate_next_month_shifts", {
+        const res = await fetch(`${API_URL}/client_generate_next_month_shifts`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ client_id }),

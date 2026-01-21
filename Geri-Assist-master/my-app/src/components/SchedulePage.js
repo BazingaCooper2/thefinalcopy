@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import API_URL from '../config/api';
 
 export default function SchedulePage() {
   const [scheduleData, setScheduleData] = useState([]);
@@ -20,7 +21,7 @@ export default function SchedulePage() {
     try {
       setLoading(true);
       // Pass the selected location as a service parameter to filter the data
-      const response = await axios.get('http://127.0.0.1:5000/scheduled', {
+      const response = await axios.get(`${API_URL}/scheduled`, {
         params: { service: selectedLocation }
       });
       setScheduleData(response.data.shift || []);

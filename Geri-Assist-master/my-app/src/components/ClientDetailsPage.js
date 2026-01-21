@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
+import API_URL from '../config/api';
 
 export default function ClientDetailsPage() {
   const [clients, setClients] = useState([]);
@@ -14,7 +15,7 @@ export default function ClientDetailsPage() {
   useEffect(() => {
     const fetchClients = async () => {
       try {
-        const response = await axios.get("http://127.0.0.1:5000/clients");
+        const response = await axios.get(`${API_URL}/clients`);
         setClients(response.data.client || []);
       } catch (error) {
         console.error("Error fetching clients:", error);

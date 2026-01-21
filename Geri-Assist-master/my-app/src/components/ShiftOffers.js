@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import API_URL from '../config/api';
 
 
 export default function ShiftOffers() {
@@ -6,7 +7,7 @@ export default function ShiftOffers() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        fetch("http://127.0.0.1:5000/shift-offers")
+        fetch(`${API_URL}/shift-offers`)
             .then(res => res.json())
             .then(data => {
                 setOffers(data);

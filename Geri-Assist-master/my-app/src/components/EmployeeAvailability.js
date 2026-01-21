@@ -1,5 +1,6 @@
 ﻿import React, { useState, useEffect } from "react";
 import { Button } from "react-bootstrap";
+import API_URL from '../config/api';
 
 export default function EmployeeAvailability({ emp }) {
 
@@ -7,14 +8,14 @@ export default function EmployeeAvailability({ emp }) {
     const [activeTab, setActiveTab] = useState("availability");
 
     useEffect(() => {
-        fetch(`http://127.0.0.1:5000/employees/${emp.emp_id}`)
+        fetch(`${API_URL}/employees/${emp.emp_id}`)
             .then((res) => res.json())
             .then((data) => {
                 setAvailability(data.employee || []);
             });
     }, [emp.emp_id]);
 
-    
+
 
     return (
         <div className="d-flex">

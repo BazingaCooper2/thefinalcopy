@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { Dropdown, ButtonGroup, Button } from 'react-bootstrap';
+import API_URL from '../config/api';
 
 function InjuryReportPage() {
   const [reports, setReports] = useState([]);
@@ -44,7 +45,7 @@ function InjuryReportPage() {
 
   const fetchReports = async () => {
     try {
-      const response = await axios.get('http://127.0.0.1:5000/injury_reports');
+      const response = await axios.get(`${API_URL}/injury_reports`);
       // Sort by date descending
       const sorted = response.data.sort((a, b) => new Date(b.date) - new Date(a.date));
       setReports(sorted);
@@ -72,7 +73,7 @@ function InjuryReportPage() {
     if (action === 'Delete') {
       if (window.confirm('Are you sure you want to delete this report?')) {
         try {
-          await axios.delete(`http://127.0.0.1:5000/injury_reports/${report.id}`);
+          await axios.delete(`${API_URL}/injury_reports/${report.id}`);
           setReports(prev => prev.filter(r => r.id !== report.id));
         } catch (err) {
           alert('Failed to delete report');
@@ -81,7 +82,7 @@ function InjuryReportPage() {
       }
     } else if (action === 'Approve') {
       try {
-        await axios.put(`http://127.0.0.1:5000/injury_reports/${report.id}/status`, { status: 'Approved' });
+        await axios.put(`${API_URL}/injury_reports/${report.id}/status`, { status: 'Approved' });
         setReports(prev => prev.map(r => r.id === report.id ? { ...r, status: 'Approved' } : r));
       } catch (err) {
         alert('Failed to approve report');

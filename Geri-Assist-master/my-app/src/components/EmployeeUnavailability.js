@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import "../../node_modules/bootstrap-icons/font/bootstrap-icons.css";
+import API_URL from '../config/api';
 
 
 const EmployeeUnavailability = ({ emp }) => {
@@ -23,7 +24,7 @@ const EmployeeUnavailability = ({ emp }) => {
 
     // Fetch unavailability from backend
     useEffect(() => {
-        fetch(`http://127.0.0.1:5000/unavailability/${emp.emp_id}`)
+        fetch(`${API_URL}/unavailability/${emp.emp_id}`)
             .then((res) => res.json())
             .then((data) => {
                 setUnavailability(data.unavailability || []);
@@ -38,7 +39,7 @@ const EmployeeUnavailability = ({ emp }) => {
 
     // Add new unavailability
     const handleSave = async () => {
-        const response = await fetch("http://127.0.0.1:5000/add_unavailability", {
+        const response = await fetch(`${API_URL}/add_unavailability`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -54,7 +55,7 @@ const EmployeeUnavailability = ({ emp }) => {
             setForm({ type: "", start_date: "", end_date: "", start_time: "", end_time: "", description: "" });
 
             // refresh table
-            const res = await fetch(`http://127.0.0.1:5000/unavailability/${emp.emp_id}`);
+            const res = await fetch(`${API_URL}/unavailability/${emp.emp_id}`);
             const data = await res.json();
             setUnavailability(data.unavailability || []);
         }
@@ -69,7 +70,7 @@ const EmployeeUnavailability = ({ emp }) => {
         if (!window.confirm("Are you sure you want to delete this entry?")) return;
 
         try {
-            const res = await fetch(`http://127.0.0.1:5000/delete_unavailability/${leave_id}`, {
+            const res = await fetch(`${API_URL}/delete_unavailability/${leave_id}`, {
                 method: "DELETE"
             });
 
@@ -88,7 +89,7 @@ const EmployeeUnavailability = ({ emp }) => {
     const handleUpdate = async () => {
         try {
             const res = await fetch(
-                `http://127.0.0.1:5000/update_unavailability/${editing.leave_id}`,
+                `${API_URL}/update_unavailability/${editing.leave_id}`,
                 {
                     method: "PUT",
                     headers: { "Content-Type": "application/json" },

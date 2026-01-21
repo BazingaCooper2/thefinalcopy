@@ -8,6 +8,7 @@ import EmployeeAvailability from "./EmployeeAvailability.js";
 import EmployeeCustomPayRates from "./EmployeeCustomPayRates.js";
 import EmployeeEmploymentSettings from "./EmployeeSettings.js";
 import NotificationSettings from "./EmployeeNotification.js";
+import API_URL from '../config/api';
 
 
 const EmployeeDetailsEach = () => {
@@ -22,7 +23,7 @@ const EmployeeDetailsEach = () => {
 
     // ---------------- FETCH EMPLOYEE DATA ----------------
     useEffect(() => {
-        fetch(`http://127.0.0.1:5000/employees/${id}`)
+        fetch(`${API_URL}/employees/${id}`)
             .then((res) => res.json())
             .then((data) => {
                 setEmployee(data.employee[0] || null);

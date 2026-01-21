@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Modal, Button } from 'react-bootstrap';
 import './DailySchedule.css';
+import API_URL from '../config/api';
 
 export default function DailySchedule() {
     const [currentDate, setCurrentDate] = useState(new Date());
@@ -45,7 +46,7 @@ export default function DailySchedule() {
                 params.service = selectedLocation;
             }
 
-            const response = await axios.get('http://127.0.0.1:5000/scheduled', { params });
+            const response = await axios.get(`${API_URL}/scheduled`, { params });
             setScheduleData(response.data);
             setLoading(false);
         } catch (error) {
@@ -70,7 +71,7 @@ export default function DailySchedule() {
     const handleEditSubmit = async () => {
         try {
             if (editingShift.isClientShift) {
-                await axios.post('http://127.0.0.1:5000/submit', {
+                await axios.post(`${API_URL}/submit`, {
                     shift_id: editingShift.shift_id,
                     client_id: editingShift.client_id,
                     shift_start_time: new Date(editFormData.shift_start_time).toISOString().replace('T', ' ').slice(0, 19),

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link } from 'react-router-dom';
+import API_URL from '../config/api';
 // Ensure you have imported 'modern-theme.css' in index.js for these styles to work
 
 export default function Register() {
@@ -81,7 +82,7 @@ export default function Register() {
         weekshift,
         role,
       };
-      const endpoint = role === "employee" ? "http://127.0.0.1:5000/register" : "http://127.0.0.1:5000/register/client";
+      const endpoint = role === "employee" ? `${API_URL}/register` : `${API_URL}/register/client`;
       const res = await fetch(endpoint, {
         method: "POST",
         headers: {
@@ -108,7 +109,7 @@ export default function Register() {
   const handlePrepareSchedule = async () => {
     try {
       setBusy(true);
-      const response = await fetch("http://127.0.0.1:5000/prepareSchedule", {
+      const response = await fetch(`${API_URL}/prepareSchedule`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

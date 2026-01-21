@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import API_URL from '../config/api';
 
 const EmployeeDetails = () => {
     const [employees, setEmployees] = useState([]);
@@ -10,7 +11,7 @@ const EmployeeDetails = () => {
 
     // Fetch employees from backend (Flask + Supabase)
     useEffect(() => {
-        fetch("http://127.0.0.1:5000/employees")
+        fetch(`${API_URL}/employees`)
             .then((res) => res.json())
             .then((data) => {
                 // Enhance employee data with mock capacity info
