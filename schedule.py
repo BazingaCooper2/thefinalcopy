@@ -981,61 +981,619 @@ def send_injury_report():
     data = request.get_json()
     if not data:
         return jsonify({"error": "Invalid request"}), 400
+    if data.get("report_type") == "hazard":
+        send_hazard_report(data)
+    if data.get("report_type") == "hazard-followup":
+        return update_hazard_followup(data)
+    if data.get("report_type") == "incident":
+        return create_incident(data)
+    if data.get("report_type") == "incident-followup":
+        return send_incident_followup(data)
+    if data.get("report_type") == "injury":
+        return report_injury(data)
+    if data.get("report_type") == "injury-followup":
+        return injury_followup(data)
+    else:
+        print(data)
+    return data
+
+
+def send_hazard_report(payload):
+    report_type = payload.get("report_type")
+
+    if report_type != "hazard":
+        return jsonify({"error": "Unsupported report type"}), 400
 
     try:
-        subject = f"🚨 New Injury Report — {data['injured_person']}"
-        body = f"""
-        <h3>🚨 New Injury Report</h3>
-        <p>This is an automated notification from the Gerri Assist.</p>
-
-        <ul>
-            <li><b>Date of Incident:</b> {data['date_of_incident']}</li>
-            <li><b>Injured Person:</b> {data['injured_person']}</li>
-            <li><b>Reported By:</b> {data['reported_by']}</li>
-            <li><b>Location:</b> {data['location']}</li>
-        </ul>
-
-        <h4>🩹 Injury Details:</h4>
-        <p>{data['injury_details']}</p>
-
-        <h4>⚕️ Action Taken:</h4>
-        <p>{data['action_taken']}</p>
-        """
-        date_of_incident = data.get("date_of_incident")
-        injured_person = data.get("injured_person")
-        reported_by = data.get("reported_by")
-        location = data.get("location")
-        injury_details = data.get("injury_details")
-        action_taken = data.get("action_taken")
-        severity = data.get("severity")
-
-        msg = MIMEMultipart()
-        msg["From"] = "hemangee4700@gmail.com"
-        msg["To"] = SUPERVISOR_EMAIL
-        msg["Subject"] = subject
-        msg.attach(MIMEText(body, "html"))
-
-        # SMTP Setup (for example Gmail)
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
-            smtp.login("hemangee4700@gmail.com", "hvvm jfdz rkjs ynly")
-            smtp.send_message(msg)
-        insert_data = {
-            "date": date_of_incident,
-            "injured_person": injured_person,
-            "reporting_employee": reported_by,
-            "location": location,
-            "description": injury_details,
-            "status": action_taken,
-            "severity": severity
+        # 🔹 Map frontend payload → table schema
+        record = {
+            "reporter_name": payload.get("reporter_name"),
+            "reported_date": payload.get("reported_date"),
+            "reported_time": payload.get("reported_time"),
+            "incident_date": payload.get("incident_date"),
+            "incident_time": payload.get("incident_time"),
+            "incident_location": payload.get("incident_location"),
+            "documented_on_hazard_board": payload.get("on_hazard_board") == "Yes",
+            "delay_reason": payload.get("delay_reason"),
+            "hazard_rating": payload.get("hazard_rating"),
+            "hazard_types": payload.get("hazards", []),
+            "hazard_details": payload.get("hazard_details"),
+            "immediate_action": payload.get("conversations_and_actions"),
+            "workers_involved": payload.get("workers_involved"),
+            "clients_involved": payload.get("clients_involved"),
+            "others_involved": payload.get("others_involved"),
+            "confirmation_signed": payload.get("confirmation_signed", False),
+            "witness_name": payload.get("witness_name"),
+            "witness_statement": payload.get("witness_statement"),
+            "witness_date": payload.get("witness_date"),
+            "witness_time": payload.get("witness_time"),
+            "status": "submitted",
+            "created_at": datetime.utcnow().isoformat()
         }
 
-        supabase.table("injury_reports").insert(insert_data).execute()
-        print("✅ Record inserted into Supabase")
-        return jsonify({"message": "Email sent successfully"}), 200
+        # 🔹 Insert into Supabase
+        result = supabase.table("hazard_near_miss_reports").insert(record).execute()
+        hazard = result.data[0]
+        hazard_id = hazard["id"]
+        # 🔹 Build email body
+        email_body = f"""
+New Hazard / Near Miss Report Submitted
+
+Hazard Id: {hazard_id}
+Reporter: {record['reporter_name']}
+Incident Date: {record['incident_date']} {record['incident_time']}
+Location: {record['incident_location']}
+
+Hazard Rating: {record['hazard_rating']}
+Hazards: {', '.join(record['hazard_types'])}
+
+Details:
+{record['hazard_details']}
+
+Immediate Actions:
+{record['immediate_action']}
+
+Workers Involved: {record['workers_involved']}
+Clients Involved: {record['clients_involved']}
+
+Witness: {record['witness_name']}
+"""
+
+        send_email(
+            subject="New Hazard / Near Miss Report",
+            body=email_body
+        )
+
+        return jsonify({"success": True, "message": "Hazard report submitted"}), 200
 
     except Exception as e:
-        print("Error sending email:", e)
         return jsonify({"error": str(e)}), 500
+
+def update_hazard_followup(payload):
+    hazard_id = payload.get("hazard_id")
+
+    if not hazard_id:
+        return jsonify({"error": "hazard_id is required"}), 400
+
+    update_data = {
+        "supervisor_rec": payload.get("supervisor_rec"),
+        "supervisor_signature": payload.get("supervisor_signature"),
+        "supervisor_sign_date": payload.get("supervisor_sign_date"),
+        "supervisor_sign_time": payload.get("supervisor_sign_time"),
+
+        "manager_followup": payload.get("manager_followup"),
+        "manager_signature": payload.get("manager_signature"),
+        "manager_sign_date": payload.get("manager_sign_date"),
+
+        "jhsc_rec": payload.get("jhsc_rec"),
+        "worker_co_chair_signature": payload.get("worker_co_chair_signature"),
+        "management_co_chair_signature": payload.get("management_co_chair_signature"),
+        "worker_co_chair_date": payload.get("worker_co_chair_date"),
+        "management_co_chair_date": payload.get("management_co_chair_date"),
+
+        # update status if needed
+        "status": "manager_reviewed"
+    }
+
+    # Remove None values (VERY IMPORTANT)
+    update_data = {k: v for k, v in update_data.items() if v is not None}
+
+    result = (
+        supabase
+        .table("hazard_near_miss_reports")
+        .update(update_data)
+        .eq("id", hazard_id)
+        .execute()
+    )
+
+    if not result.data:
+        return jsonify({"error": "Hazard report not found"}), 404
+
+    subject = f"Hazard / Near Miss Report #{hazard_id}"
+
+    body = f"""
+A new Hazard / Near Miss has been reported.
+
+Report ID: {hazard_id}
+
+Employee: {update_data.get("employee_name")}
+Date: {update_data.get("date")} {update_data.get("time")}
+Location: {update_data.get("location")}
+Hazard Type: {update_data.get("hazard_type")}
+Injury: {update_data.get("injury")}
+
+Description:
+{update_data.get("description")}
+
+Status: Reported
+
+Please review and complete supervisor follow-up.
+"""
+
+    send_email(
+        subject=subject,
+        body=body
+    )
+
+    return jsonify({
+        "success": True,
+        "message": "Hazard follow-up updated",
+        "hazard_id": hazard_id
+    }), 200
+
+def create_incident(payload):
+    try:
+        insert_data = {
+            "reporter_name": payload.get("reporter_name"),
+            "job_title": payload.get("job_title"),
+            "telephone": payload.get("telephone"),
+            "email": payload.get("email"),
+            "work_location": payload.get("work_location"),
+            "supervisor_notified": payload.get("supervisor_notified"),
+            "date_reported": payload.get("date_reported"),
+            "time_reported": payload.get("time_reported"),
+            "confirmation_signed": payload.get("confirmation_signed"),
+            "reporter_signature": payload.get("reporter_signature"),
+            "date_signed": payload.get("date_signed"),
+
+            "workers": payload.get("workers"),
+            "clients": payload.get("clients"),
+            "others": payload.get("others"),
+
+            "withness_name": payload.get("witness_name"),
+            "witness_job_title": payload.get("witness_job_title"),
+            "witness_contact": payload.get("witness_contact"),
+
+            "incident_date": payload.get("date_of_incident"),
+            "incident_time": payload.get("time_of_incident"),
+            "incident_location": payload.get("location"),
+
+            "incident_description": payload.get("incident_description"),
+            "who_involved": payload.get("who_involved"),
+            "who_reported": payload.get("who_reported"),
+
+            "witness_statement": payload.get("witness_statement"),
+            "personal_observation": payload.get("personal_observation"),
+            "sequence_of_events": payload.get("sequence_of_events"),
+            "client_concerns": payload.get("client_concerns"),
+            "client_condition": payload.get("client_condition"),
+            "injuries": payload.get("injuries"),
+
+            # boolean column
+            "environmental_hazards": bool(payload.get("environmental_hazards")),
+
+            "immediate_actions": payload.get("immediate_actions"),
+            "who_was_informed": payload.get("who_informed"),
+
+            "worker_name_bottom": payload.get("worker_name_bottom"),
+            "date_of_incident_bottom": payload.get("date_of_incident_bottom"),
+            "client_name_bottom": payload.get("client_name_bottom"),
+            "time_of_incident_bottom": payload.get("time_of_incident_bottom"),
+
+            "status": "reported"
+        }
+
+        result = (
+            supabase
+            .table("incident_reports")
+            .insert(insert_data)
+            .execute()
+        )
+
+        if not result.data:
+            return jsonify({"error": "Failed to create incident report"}), 500
+
+        incident = result.data[0]
+        incident_id = incident["id"]
+
+        subject = f"Incident Report #{incident_id}"
+
+        body = f"""
+    A new Incident Report has been submitted.
+
+    Incident ID: {incident_id}
+
+    Reporter: {incident.get("reporter_name")}
+    Date Reported: {incident.get("date_reported")} {incident.get("time_reported")}
+    Incident Date: {incident.get("incident_date")} {incident.get("incident_time")}
+    Location: {incident.get("incident_location")}
+
+    Description:
+    {incident.get("incident_description")}
+
+    Who Involved:
+    {incident.get("who_involved")}
+
+    Immediate Actions:
+    {incident.get("immediate_actions")}
+
+    Status: Reported
+
+    Please log in to review and complete supervisor follow-up.
+    """
+
+        send_email(
+            subject=subject,
+            body=body
+        )
+        return jsonify({"success": True, "message": "Incident report submitted"}), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+def send_incident_followup(request):
+    data = request
+
+    report_type = data.get("report_type")
+
+    if report_type != "incident-followup":
+        return jsonify({
+            "success": False,
+            "message": "Invalid report_type"
+        }), 400
+
+    incident_id = data.get("incident_id")
+
+    if not incident_id:
+        return jsonify({
+            "success": False,
+            "message": "incident_id is required"
+        }), 400
+
+    # 🔹 Build UPDATE payload (only follow-up columns)
+    update_payload = {
+        "reported_to_supervisor_by": data.get("reported_to_supervisor_by"),
+        "reported_to_supervisor_time": data.get("reported_to_supervisor_time"),
+        "supervisor_witness_statement": data.get("supervisor_witness_statement"),
+        "reporting_delays": data.get("reporting_delays"),
+        "verified_info": data.get("verified_info"),
+        "factual_summary": data.get("factual_summary"),
+        "immediate_risks": data.get("immediate_risks"),
+        "hr_followup": data.get("hr_followup"),
+        "supervisor_steps": data.get("supervisor_steps"),
+        "further_followup": data.get("further_followup"),
+        "prevention_recs": data.get("prevention_recs"),
+        "supervisor_signature": data.get("supervisor_signature"),
+        "supervisor_sign_date": data.get("supervisor_sign_date"),
+        "supervisor_sign_time": data.get("supervisor_sign_time"),
+        "manager_followup": data.get("manager_followup"),
+        "manager_signature": data.get("manager_signature"),
+        "manager_sign_date": data.get("manager_sign_date"),
+        "status": "Closed"
+    }
+
+    # Remove None values (important)
+    update_payload = {k: v for k, v in update_payload.items() if v is not None}
+
+    # 1️⃣ Update incident record
+    update_res = (
+        supabase
+        .table("incident_reports")
+        .update(update_payload)
+        .eq("id", incident_id)
+        .execute()
+    )
+
+    if not update_res.data:
+        return jsonify({
+            "success": False,
+            "message": "Incident not found"
+        }), 404
+
+    # 2️⃣ Fetch updated incident (for email)
+    incident = (
+        supabase
+        .table("incident_reports")
+        .select("*")
+        .eq("id", incident_id)
+        .single()
+        .execute()
+        .data
+    )
+
+    subject = f"Incident Follow-up Completed | ID #{incident['id']}"
+
+    body = f"""
+INCIDENT FOLLOW-UP REPORT
+
+Incident ID: {incident['id']}
+
+Reported To Supervisor By:
+{incident.get('reported_to_supervisor_by', '-')}
+
+Supervisor Witness Statement:
+{incident.get('supervisor_witness_statement', '-')}
+
+Reporting Delays:
+{incident.get('reporting_delays', '-')}
+
+Verified Information:
+{incident.get('verified_info', '-')}
+
+Factual Summary:
+{incident.get('factual_summary', '-')}
+
+Immediate Risks:
+{incident.get('immediate_risks', '-')}
+
+HR Follow-up:
+{incident.get('hr_followup', '-')}
+
+Supervisor Steps:
+{incident.get('supervisor_steps', '-')}
+
+Further Follow-up:
+{incident.get('further_followup', '-')}
+
+Prevention Recommendations:
+{incident.get('prevention_recs', '-')}
+
+Supervisor Signed On:
+{incident.get('supervisor_sign_date')} {incident.get('supervisor_sign_time')}
+
+Manager Follow-up:
+{incident.get('manager_followup', '-')}
+
+Manager Signed On:
+{incident.get('manager_sign_date', '-')}
+
+Status:
+{incident.get('status', '-')}
+
+---
+This is a system-generated follow-up notification.
+"""
+
+    send_email(
+        subject=subject,
+        body=body
+    )
+
+    return jsonify({
+        "success": True,
+        "message": "Incident follow-up submitted successfully",
+        "incident_id": incident_id
+    }), 200
+
+def report_injury(payload):
+    payload = request.json  # assuming Flask
+
+    injury_data = {
+        "date": payload["date_of_injury"],
+
+        "injured_person": payload["emp_name"],
+        "reporting_employee": payload["reporter_name"],
+        "location": payload["location"],
+        "description": payload["injury_description"],
+
+        "status": "submitted",
+
+        # Reporting details
+        "reported_date": payload["date_reported"],
+        "reported_time": payload["time_of_injury"],
+        "delay_reason": payload["delay_reason"],
+
+        # Injury details
+        "injury_date": payload["date_of_injury"],
+        "injury_time": payload["time_of_injury_detail"],
+        "time_left_work": payload["time_left_work"],
+        "program": payload["program"],
+
+        # Medical
+        "medical_attention_required": payload["medical_attention_required"] == "Yes",
+        "rtw_package_taken": payload["rtw_package_taken"] == "Yes",
+
+        # Body parts
+        "injured_body_parts": payload.get("body_parts", []),
+
+        # Witness
+        "witness_remarks": payload["witness_remarks"],
+        "witness_name": payload["witness_name"],
+        "witness_phone": payload["witness_phone"],
+        "witness_signature": {
+            "signature": payload["witness_signature"]
+        },
+        "witness_date": payload["witness_date"],
+        "witness_time": payload["witness_time"],
+
+        # HCP
+        "hcp_name": payload["hcp_name_title"],
+        "hcp_address": payload["hcp_address"],
+        "hcp_phone": payload["hcp_phone"],
+
+        # Reporter & employee info
+        "reporter_name": payload["reporter_name"],
+        "reported_to_supervisor_name": payload["reported_to_supervisor"],
+
+        "emp_name": payload["emp_name"],
+        "emp_phone": payload["emp_phone"],
+        "emp_email": payload["emp_email"],
+        "emp_address": payload["emp_address"],
+
+        "client_involved": payload["client_involved"],
+
+        # Employee confirmation
+        "employee_signature": {
+            "signed": payload["confirmation_signed"],
+            "signature": payload["employee_signature"]
+        },
+        "employee_sign_date": payload["sign_date"],
+
+        # FAF
+        "faf_form_brought": payload["faf_form_brought"] == "Yes",
+
+        # Flags
+        "supervisor_notified": True if payload["reported_to_supervisor"] else False
+    }
+
+    response = supabase.table("injury_reports") \
+        .insert(injury_data) \
+        .execute()
+    data = response.data[0]
+    injury_id = response.data[0]["id"]
+    email_body = f"""
+    Injury Report Submitted Successfully
+
+    Injury Report ID: {injury_id}
+
+    Employee Name: {data.get("emp_name")}
+    Date of Injury: {data.get("date_of_injury")}
+    Time of Injury: {data.get("time_of_injury_detail")}
+    Location: {data.get("location")}
+
+    Body Parts Involved:
+    {", ".join(data.get("body_parts", []))}
+
+    Description:
+    {data.get("injury_description")}
+
+    Reporter: {data.get("reporter_name")}
+    Supervisor Notified: {data.get("reported_to_supervisor")}
+
+    Please retain this ID for future reference.
+    """
+
+    send_email(
+        subject=f"Injury Report Submitted (ID: {injury_id})",
+        body=email_body
+    )
+
+    return jsonify({
+        "success": True,
+        "injury_report_id": injury_id
+    }), 201
+
+def injury_followup(payload):
+    payload = request.json
+
+    injury_report_id = payload.get("injury_report_id")
+
+    if not injury_report_id:
+        return jsonify({"success": False, "message": "injury_report_id is required"}), 400
+
+    try:
+       
+        update_data = {
+            "rtw_initiated": yes_no_to_bool(payload.get("rtw_initiated")),
+            "investigation_started": yes_no_to_bool(payload.get("investigation_started")),
+            "copy_provided_to_hr": yes_no_to_bool(payload.get("copy_provided_to_hr")),
+
+            "supervisor_actions": payload.get("supervisor_steps_resolve"),
+            "supervisor_signature": payload.get("supervisor_signature"),
+            "supervisor_sign_date": payload.get("supervisor_sign_date"),
+            "supervisor_sign_time": payload.get("supervisor_sign_time"),
+
+            "manager_recommendations": payload.get("manager_recommendations"),
+            "manager_signature": payload.get("manager_signature"),
+            "manager_sign_date": payload.get("manager_sign_date"),
+            "manager_sign_time": payload.get("manager_sign_time"),
+
+            # Optional status update
+            "status": "submitted"
+        }
+
+        # Remove None values (important)
+        update_data = {k: v for k, v in update_data.items() if v is not None}
+
+        update_response = (
+            supabase.table("injury_reports")
+            .update(update_data)
+            .eq("id", injury_report_id)
+            .execute()
+        )
+
+        if not update_response.data:
+            return jsonify({
+                "success": False,
+                "message": "Injury report not found"
+            }), 404
+
+        
+        report = (
+            supabase.table("injury_reports")
+            .select("*")
+            .eq("id", injury_report_id)
+            .single()
+            .execute()
+            .data
+        )
+
+        subject = f"Injury Report Follow-Up Submitted (ID: {injury_report_id})"
+
+        email_body = f"""
+        <h3>Injury Report Follow-Up</h3>
+
+        <p><strong>Report ID:</strong> {injury_report_id}</p>
+        <p><strong>RTW Initiated:</strong> {payload.get("rtw_initiated")}</p>
+        <p><strong>Investigation Started:</strong> {payload.get("investigation_started")}</p>
+        <p><strong>Copy Provided to HR:</strong> {payload.get("copy_provided_to_hr")}</p>
+
+        <hr/>
+
+        <h4>Supervisor</h4>
+        <p>{payload.get("supervisor_steps_resolve")}</p>
+
+        <h4>Manager Recommendations</h4>
+        <p>{payload.get("manager_recommendations")}</p>
+
+        <p><em>Submitted on {datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")}</em></p>
+        """
+
+        send_email(
+            subject=subject,
+            body=email_body
+        )
+        return jsonify({
+            "success": True,
+            "message": "Injury follow-up updated and email sent",
+            "injury_report_id": injury_report_id
+        })
+
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+def yes_no_to_bool(value):
+    if value is None:
+        return None
+    return value.lower() == "yes"
+
+def send_email(subject, body):
+    sender = "hemangee4700@gmail.com"
+    recipients = ["hemangee4700@gmail.com"]
+
+    msg = MIMEText(body)
+    msg["Subject"] = subject
+    msg["From"] = sender
+    msg["To"] = ", ".join(recipients)
+
+    with smtplib.SMTP("smtp.gmail.com", 587) as server:
+        server.starttls()
+        server.login("hemangee4700@gmail.com", "hvvm jfdz rkjs ynly")
+        server.send_message(msg)
+
 
 @app.route("/add_client_shift", methods=["POST"])
 def add_client_shift():
