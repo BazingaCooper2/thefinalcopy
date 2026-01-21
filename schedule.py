@@ -48,10 +48,16 @@ def dashboard_stats():
         .execute().count
 
     # 3️⃣ Accepted Offers
-    accepted_offers = supabase.table("shift_offers") \
-        .select("offers_id", count="exact") \
-        .eq("status", "sent") \
-        .execute().count
+    accepted_offers = (
+            supabase.table("shift_offers")
+            .select("offers_id", count="exact")
+            .eq("status", "sent")
+            .gte("sent_at", f"{today}T00:00:00")
+            .lt("sent_at", f"{today}T23:59:59.999999")
+            .execute()
+            .count
+        )
+
 
     # 4️⃣ Employees On Leave
     on_leave = supabase.table("leaves") \
@@ -629,12 +635,13 @@ def register():
             }).execute()
             
             ds = supabase.table("daily_shift").insert({
-                "shift_date":str(final_date),
+                "shift_date": str(final_date),
                 "emp_id": newemp_id,
                 "shift_type": "flw-rtw",
-                "shift_start_time":f"{shift_date} {sh["start"]}:00",
-                "shift_end_time":f"{shift_date} {sh["end"]}:00"
+                "shift_start_time": f"{shift_date} {sh['start']}:00",
+                "shift_end_time": f"{shift_date} {sh['end']}:00"
             }).execute()
+
 
 
     return jsonify({"message": "Registered successfully", "data": response.data}), 201
@@ -832,7 +839,7 @@ def login():
 @app.route('/protected')
 def protected():
     if 'emp_id' in session:
-        return jsonify({'message': f'Welcome, user {session['emp_id']}!'})
+        return jsonify({'message': f"Welcome, user {session['emp_id']}!"})
     else:
         return jsonify({'message': 'Unauthorized'}), 401
 
