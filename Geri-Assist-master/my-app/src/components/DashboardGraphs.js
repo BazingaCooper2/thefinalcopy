@@ -1,4 +1,5 @@
 import React from 'react';
+import { useEffect, useState } from 'react';
 import {
     LineChart,
     Line,
@@ -13,37 +14,33 @@ import {
     ResponsiveContainer,
 } from 'recharts';
 
+
+
 export default function DashboardGraphs() {
-    // Sample data for clock-in/out throughout the day
-    const clockData = [
-        { time: '6 AM', clockedIn: 2, clockedOut: 0 },
-        { time: '7 AM', clockedIn: 8, clockedOut: 1 },
-        { time: '8 AM', clockedIn: 15, clockedOut: 2 },
-        { time: '9 AM', clockedIn: 22, clockedOut: 3 },
-        { time: '10 AM', clockedIn: 28, clockedOut: 5 },
-        { time: '11 AM', clockedIn: 30, clockedOut: 8 },
-        { time: '12 PM', clockedIn: 30, clockedOut: 12 },
-        { time: '1 PM', clockedIn: 28, clockedOut: 15 },
-        { time: '2 PM', clockedIn: 25, clockedOut: 18 },
-        { time: '3 PM', clockedIn: 20, clockedOut: 22 },
-        { time: '4 PM', clockedIn: 15, clockedOut: 25 },
-        { time: '5 PM', clockedIn: 8, clockedOut: 28 },
-        { time: '6 PM', clockedIn: 3, clockedOut: 30 },
-    ];
-
-    // Sample data for current clock status
-    const clockStatusData = [
-        { name: 'Clocked In', value: 30, color: '#8b5cf6' },
-        { name: 'Clocked Out', value: 35, color: '#06b6d4' },
-    ];
-
-    // Sample data for employee status
-    const statusData = [
-        { name: 'Available', value: 45, color: '#06b6d4' },
-        { name: 'Unavailable', value: 12, color: '#8b5cf6' },
-        { name: 'On Leave', value: 8, color: '#f97316' },
-    ];
-
+    const [clockData, setClockData] = useState([]);
+    const [clockStatusData, setClockStatusData] = useState([]);
+    const [statusData, setStatusData] = useState([]);
+    useEffect(() => {
+        // Clock timeline + pie
+        fetch('http://localhost:5000/dashboard/clock-stats')
+            .then(res => res.json())
+            .then(data => {
+                setClockData(data.timeline);
+    
+                setClockStatusData([
+                    { name: 'Clocked In', value: data.totals.clockedIn, color: '#8b5cf6' },
+                    { name: 'Clocked Out', value: data.totals.clockedOut, color: '#06b6d4' },
+                ]);
+            });
+    
+        // Employee status pie
+        fetch('http://localhost:5000/dashboard/employee-status')
+            .then(res => res.json())
+            .then(data => {
+                setStatusData(data);
+            });
+    }, []);
+    
     const CustomTooltip = ({ active, payload, label }) => {
         if (active && payload && payload.length) {
             return (

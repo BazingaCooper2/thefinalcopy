@@ -22,29 +22,33 @@ export default function Login() {
         setOk(false);
         setBusy(true);
         try {
-            const payload = {
-                employeeId,
-                password
+                const payload = { employeeId, password };
+
+                const res = await fetch("http://127.0.0.1:5000/login", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload),
+                });
+
+                const data = await res.json();
+
+                if (!res.ok || !data?.success) {
+                    throw new Error(data?.message || "Login failed");
+                }
+
+                if (!data.token || !data.user) {
+                    throw new Error("Invalid login response from server");
+                }
+                sessionStorage.setItem("emp_id", data.user.emp_id);
+
+                login(data.token, data.user);
+
+                setOk(true);
+                setMsg("Login successful");
+
+                navigate("/", { replace: true });
             }
-            const res = await fetch("http://127.0.0.1:5000/login", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify(payload)
-            });
-            const data = await res.json();
-
-            if (!res.ok || !data.success) {
-                throw new Error(data.message || "Login failed");
-            }
-
-
-            setOk(true);
-            setMsg(res.message || "Login successful");
-            login(data.token, data.user);
-            navigate("/", { replace: true });
-        } catch (err) {
+        catch (err) {
             setOk(false);
             setMsg(err.message || "Login failed");
         } finally {

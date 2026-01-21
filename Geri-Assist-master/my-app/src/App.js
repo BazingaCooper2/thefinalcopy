@@ -2,6 +2,8 @@ import Sidebar from './components/Sidebar';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import Dashboard from './components/Dashboard';
+import ClockIn from './components/ClockIn';
+import Tasks from './components/Tasks';
 import SchedulePage from './components/SchedulePage';
 import Login from './components/Login';
 import Logout from './components/Logout';
@@ -26,46 +28,50 @@ const AuthContext = createContext();
 
 function AuthProvider({ children }) {
     const [user, setUser] = useState(null);
+    const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        const token = localStorage.getItem('token');
-        if (token) {
-            try {
-                //const payload = JSON.parse(atob(token.split('.')[1]));
-                //const storedUser = localStorage.getItem("user");
-                //if (payload.exp * 1000 > Date.now()) {
-                //    if (storedUser) {
-                //        setUser(JSON.parse(storedUser));
-                //    }
-                //}
-                const storedUser = localStorage.getItem("user");
-                const token = localStorage.getItem("token");
+        try {
+            const token = localStorage.getItem("token");
+            const storedUser = localStorage.getItem("user");
 
-                if (storedUser && token) {
-                    setUser(JSON.parse(storedUser));
-                }
-            } catch (e) {
-                localStorage.removeItem('token');
+            if (token && storedUser) {
+                setUser(JSON.parse(storedUser));
+            } else {
+                setUser(null);
             }
+        } catch (e) {
+            localStorage.removeItem("token");
+            localStorage.removeItem("user");
+            setUser(null);
+        } finally {
+            setLoading(false);
         }
     }, []);
 
     const login = (token, userData) => {
-        localStorage.setItem('token', token);
+        localStorage.setItem("token", token);
         localStorage.setItem("user", JSON.stringify(userData));
         setUser(userData);
     };
 
     const logout = () => {
-        localStorage.removeItem('token');
+        localStorage.removeItem("token");
         localStorage.removeItem("user");
         setUser(null);
     };
 
+    if (loading) return null; 
+
     const value = { user, login, logout, isAuthenticated: !!user };
 
-    return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+    return (
+        <AuthContext.Provider value={value}>
+            {children}
+        </AuthContext.Provider>
+    );
 }
+
 
 export function useAuth() {
     return useContext(AuthContext);
@@ -73,14 +79,23 @@ export function useAuth() {
 
 function ProtectedRoute({ children, supervisorOnly = false }) {
     const { user, isAuthenticated } = useAuth();
-    console.log(user);
-    const isSupervisor = user?.emp_role === 'SUPERVISOR' || user?.emp_role === 'MANAGER' || user?.emp_role === 'ADMIN';
 
-    if (!isAuthenticated) return <Navigate to="/login" replace />;
-    if (supervisorOnly && !isSupervisor) return <Navigate to="/" replace />;
-    
+    const isSupervisor =
+        user?.emp_role === "SUPERVISOR" ||
+        user?.emp_role === "MANAGER" ||
+        user?.emp_role === "ADMIN";
+
+    if (!isAuthenticated) {
+        return <Navigate to="/login" replace />;
+    }
+
+    if (supervisorOnly && !isSupervisor) {
+        return <Navigate to="/" replace />;
+    }
+
     return children;
 }
+
 //const token = localStorage.getItem("token");
 //return token ? children : <Navigate to="/" />;
 
@@ -90,9 +105,12 @@ function AppContent() {
       <Router>
         <Navbar />
         <div className="d-flex flex-grow-1" style={{ overflow: 'hidden' }}>
-          <div style={{ width: '250px', flexShrink: 0 }} className="d-none d-md-block">
+          <div
+            style={{ width: '250px', flexShrink: 0 }}
+            className="sidebar-container">
             <Sidebar />
           </div>
+
           <div className="flex-grow-1" style={{ overflowY: 'auto', overflowX: 'hidden', display: 'flex', flexDirection: 'column' }}>
             <div style={{ flex: '1' }}>
               <Routes>
@@ -111,15 +129,13 @@ function AppContent() {
                               <Route path="/masterSchedule" element={<ProtectedRoute supervisorOnly><MasterSchedule /></ProtectedRoute>}></Route>
                               <Route path="/dailySchedule" element={<ProtectedRoute supervisorOnly><DailySchedule /></ProtectedRoute>}></Route>
                               <Route path="/shift-offers" element={<ProtectedRoute supervisorOnly><ShiftOffers /></ProtectedRoute>}></Route>
+                              <Route path="/clock"element={<ProtectedRoute><ClockIn /></ProtectedRoute>}/>
+                              <Route path="/tasks" element={<ProtectedRoute supervisorOnly><Tasks /></ProtectedRoute>}/>
                               <Route path="*" element={<Navigate to="/login" replace />} />
               </Routes>
             </div>
             <Footer />
           </div>
-        </div>
-        {/* Mobile Bottom Navigation */}
-        <div className="d-md-none" style={{ height: '60px', background: 'var(--dark-bg)', boxShadow: '0 -2px 10px rgba(0,0,0,0.1)' }}>
-          <Sidebar />
         </div>
       </Router>
     </div>
