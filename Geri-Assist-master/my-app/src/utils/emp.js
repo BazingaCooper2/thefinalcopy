@@ -1,6 +1,11 @@
-// src/utils/emp.js
 export function getEmpId() {
     const id = sessionStorage.getItem("emp_id");
-    if (!id) throw new Error("emp_id missing from session");
+
+    if (!id) {
+        // hard redirect – auth state is broken
+        window.location.replace("/login");
+        return null;
+    }
+
     return Number(id);
 }

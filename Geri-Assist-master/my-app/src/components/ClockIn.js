@@ -11,6 +11,8 @@ export default function ClockIn() {
     const [taskBusy, setTaskBusy] = useState({});
 
     const empId = getEmpId();
+    if (!empId) return null;
+
 
     // 🔁 Restore state on refresh
     useEffect(() => {
