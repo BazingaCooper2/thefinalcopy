@@ -855,16 +855,48 @@ def logout():
         "message": "Logged out successfully"
     })
 
+def require_supervisor(f):
+    def decorated(*args, **kwargs):
+        if 'emp_role' not in session:
+            return jsonify({"error": "Unauthorized"}), 401
+        if session['emp_role'] not in ['SUPERVISOR', 'MANAGER', 'ADMIN']:
+            return jsonify({"error": "Supervisor access required"}), 403
+        return f(*args, **kwargs)
+    return decorated
+
 @app.route('/clients', methods=['GET'])
+@require_supervisor
 def get_clients():
     try:
-        # Fetch all rows from client table
-        response = supabase.table("client").select("*").execute()
+        response = supabase.table("client").select("""
+            client_id, first_name, last_name, name, phone, email, 
+            address_line1, address_line2, city, province, zip_code,
+            service_type, date_of_birth, gender, preferred_language,
+            notes, risks, client_coordinator_name, image_url,
+            care_mgmt, doctor, nurse, coordinator_notes,
+            individual_service, tasks, instructions, payroll_data
+        """).execute()
 
-        if response:
-            return jsonify({"client": response.data})
-        return jsonify({"error": str(response.error)}), 400
+        return jsonify({
+            "success": True,
+            "clients": response.data,
+            "count": len(response.data)
+        }), 200
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
+@app.route('/clients/<int:client_id>', methods=['PUT'])
+@require_supervisor  # Supervisor only
+def update_client(client_id):
+    data = request.get_json()
+    try:
+        response = supabase.table("client").update(data).eq("client_id", client_id).execute()
+        return jsonify({
+            "success": True,
+            "message": "Client updated successfully",
+            "client": response.data[0] if response.data else None
+        }), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
     
@@ -1674,4 +1706,5 @@ def get_shift_offers():
 # --- Run ---
 if __name__ == '__main__':
     app.run(debug=True)
+
 
