@@ -1,6 +1,6 @@
 import ShiftCell from "./ShiftCell";
 
-export default function EmployeeRow({ employee, service, onShiftClick }) {
+export default function EmployeeRow({ employee, id, service, onShiftClick }) {
 
     // Calculate total hours scheduled in this view
     const totalHours = employee.shifts.reduce((acc, shift) => {
@@ -68,6 +68,7 @@ export default function EmployeeRow({ employee, service, onShiftClick }) {
                     key={i}
                     shift={shift}
                     service={service}
+                    emp_id={id}
                     onShiftClick={onShiftClick}
                 />
             ))}

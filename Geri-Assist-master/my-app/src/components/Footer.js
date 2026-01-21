@@ -6,9 +6,9 @@ export default function Footer() {
     return (
         <footer className="geri-footer">
             <div className="footer-container">
-                {/* Column 1: About Geri-Assist */}
+                {/* Column 1: About ZaqenCare */}
                 <div className="footer-column">
-                    <h3 className="footer-heading">About Geri-Assist</h3>
+                    <h3 className="footer-heading">About ZaqenCare</h3>
                     <ul className="footer-links">
                         <li><Link to="/about">About Us</Link></li>
                         <li><Link to="/our-mission">Our Mission</Link></li>
@@ -60,7 +60,7 @@ export default function Footer() {
                     </ul>
                     <div className="footer-contact-info mt-3">
                         <p><i className="bi bi-telephone-fill"></i> <strong>Support:</strong> 1800-123-4567</p>
-                        <p><i className="bi bi-envelope-fill"></i> <strong>Email:</strong> support@geri-assist.com</p>
+                        <p><i className="bi bi-envelope-fill"></i> <strong>Email:</strong> support@ZaqenCare.com</p>
                     </div>
                 </div>
 
@@ -83,14 +83,14 @@ export default function Footer() {
                     <div className="footer-logo-section">
                         <div className="footer-logo">
                             <i className="bi bi-heart-pulse-fill"></i>
-                            <span>Geri-Assist</span>
+                            <span>ZaqenCare</span>
                         </div>
                         <p className="footer-tagline">Compassionate Care, Simplified Management</p>
                     </div>
 
                     {/* App Download Section */}
                     <div className="footer-app-section">
-                        <p className="footer-app-title">Get Geri-Assist Mobile App</p>
+                        <p className="footer-app-title">Get ZaqenCare Mobile App</p>
                         <div className="app-badges">
                             <a href="#google-play" className="app-badge">
                                 <img
@@ -130,7 +130,7 @@ export default function Footer() {
 
             {/* Copyright Section */}
             <div className="footer-copyright">
-                <p>© 2024 Geri-Assist. All Rights Reserved.</p>
+                <p>© 2024 ZaqenCare. All Rights Reserved.</p>
             </div>
         </footer>
     );

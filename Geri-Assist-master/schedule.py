@@ -5,74 +5,98 @@ from flask_cors import CORS
 from datetime import timedelta, datetime
 from datetime import date
 import os
-import firebase_admin
-from firebase_admin import messaging, credentials
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import calendar
-from dotenv import load_dotenv
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+import json
+import asyncio
 
-# Load environment variables from .env file
-load_dotenv()
+app_notif = FastAPI()
+
+active_connections = {}  # emp_id -> WebSocket
+
 
 app = Flask(__name__)
 app.secret_key = 'seckey257'
 CORS(app)
 
-# Replace with your values - USE ENVIRONMENT VARIABLES IN PRODUCTION
-url = os.getenv("SUPABASE_URL", "YOUR_SUPABASE_URL_HERE")
-key = os.getenv("SUPABASE_KEY", "YOUR_SUPABASE_KEY_HERE")
+# Replace with your values
+url = "https://asbfhxdomvclwsrekdxi.supabase.co"
+# key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFzYmZoeGRvbXZjbHdzcmVrZHhpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQzMjI3OTUsImV4cCI6MjA2OTg5ODc5NX0.0VzbWIc-uxIDhI03g04n8HSPRQ_p01UTJQ1sg8ggigU"
+key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFzYmZoeGRvbXZjbHdzcmVrZHhpIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NDMyMjc5NSwiZXhwIjoyMDY5ODk4Nzk1fQ.iPXQg3KBXGXNlJwMzv5Novm0Qnc7Y5sPNE4RYxg3wqI"
 supabase: Client = create_client(url, key)
 
-cred = credentials.Certificate("./gerriapp-firebase-adminsdk-fbsvc-fe186b01ec.json")
-firebase_admin.initialize_app(cred)
+@app.route('/dashboard/stats', methods=['GET'])
+def dashboard_stats():
+    now = datetime.utcnow()
+    today = now.date().isoformat()
+
+    # 1️⃣ Scheduled Visits (Today)
+    scheduled = supabase.table("shift") \
+        .select("shift_id", count="exact") \
+        .eq("date", today) \
+        .eq("shift_status", "Scheduled") \
+        .execute().count
+
+    # 2️⃣ Clocked-in Employees
+    clocked_in = supabase.table("shift") \
+        .select("shift_id", count="exact") \
+        .eq("date", today) \
+        .eq("shift_status", "Clocked in") \
+        .execute().count
+
+    # 3️⃣ Accepted Offers
+    accepted_offers = supabase.table("shift_offers") \
+        .select("offers_id", count="exact") \
+        .eq("status", "pending") \
+        .execute().count
+
+    # 4️⃣ Employees On Leave
+    on_leave = supabase.table("leaves") \
+        .select("emp_id", count="exact") \
+        .lte("leave_start_date", today) \
+        .gte("leave_end_date", today) \
+        .execute().count
+
+    # 5️⃣ Sick Leave
+    sick_leave = supabase.table("leaves") \
+        .select("emp_id", count="exact") \
+        .eq("leave_type", "Sick") \
+        .lte("leave_start_date", today) \
+        .gte("leave_end_date", today) \
+        .execute().count
+
+    # 6️⃣ Available Employees
+    total_employees = supabase.table("employee") \
+        .select("emp_id", count="exact") \
+        .execute().count
+
+    unavailable_now = supabase.table("leaves") \
+        .select("emp_id", count="exact") \
+        .lte("leave_start_date", today) \
+        .gte("leave_end_date", today) \
+        .execute().count
+
+    available = total_employees - (clocked_in + on_leave)
+
+    return jsonify([
+        { "label": "Schedule Visits", "value": scheduled, "color": "card-purple" },
+        { "label": "Clocked-in", "value": clocked_in, "color": "card-cyan" },
+        { "label": "Accepted Offers", "value": accepted_offers, "color": "card-purple" },
+        { "label": "Available", "value": max(available, 0), "color": "card-green" },
+        { "label": "On Leave", "value": on_leave, "color": "card-orange" },
+        { "label": "Unavailable - Sick", "value": sick_leave, "color": "card-orange" }
+    ])
 
 # schedule display
 @app.route('/scheduled', methods=['GET'])
 def schedule():
-    # Get optional service parameter for filtering
-    service = request.args.get('service', None)
-    date_filter = request.args.get('date', None)
-    
-    # Build base queries
-    clients_query = supabase.table("client").select("*")
-    employees_query = supabase.table("employee").select("*")
-    shifts_query = supabase.table("shift").select("*")
-    daily_shifts_query = supabase.table("daily_shift").select("*")
-
-    # If service is provided, filter by service_type
-    if service:
-        clients_query = clients_query.eq("service_type", service)
-        employees_query = employees_query.eq("service_type", service)
-        
-    clients = clients_query.execute()
-    employees = employees_query.execute()
-    
-    # Get client_ids and emp_ids for filtering shifts
-    client_ids = [c["client_id"] for c in clients.data] if clients.data else []
-    emp_ids = [e["emp_id"] for e in employees.data] if employees.data else []
-    
-    # Filter shifts based on clients and employees in this service
-    if service:
-        if client_ids:
-            shifts_query = shifts_query.in_("client_id", client_ids)
-        else:
-            shifts_query = shifts_query.limit(0)
-            
-        if emp_ids:
-            daily_shifts_query = daily_shifts_query.in_("emp_id", emp_ids)
-        else:
-            daily_shifts_query = daily_shifts_query.limit(0)
-
-    # Apply date filtering if provided
-    if date_filter:
-        # Assuming date format YYYY-MM-DD
-        shifts_query = shifts_query.eq("date", date_filter)
-        daily_shifts_query = daily_shifts_query.eq("shift_date", date_filter)
-
-    shifts = shifts_query.execute()
-    daily_shifts = daily_shifts_query.execute()
+    clients = supabase.table("client").select("*").execute()
+    employees = supabase.table("employee").select("*").execute()
+    shifts = supabase.table("shift").select("*").execute()
+    daily_shifts = supabase.table("daily_shift").select("*").execute()
 
     datatosend = {
         "client": clients.data,
@@ -117,17 +141,6 @@ def edit_schedule():
         "client": client.data,
         "updated_shift": updated_shift.data
     })
-
-def send_notification(token, title, body):
-    message = messaging.Message(
-        notification=messaging.Notification(
-            title=title,
-            body=body,
-        ),
-        token=token,
-    )
-    response = messaging.send(message)
-    print("Notification sent:", response)
 
 @app.route('/newShiftSchedule', methods=['GET'])
 def newShiftSchedule():
@@ -211,8 +224,9 @@ def parse_datetime(tstr: str) -> datetime:
             continue
     raise ValueError(f"Unknown datetime format: {tstr}")
 
-def overlaps(client_start_time, client_end_time, dsst, dset, ssst, sset):
+def overlaps(em,client_start_time, client_end_time, dsst, dset, ssst, sset):
     """Check if time overlaps."""
+    print(em)
     if(dsst=="" or dset==""):
         return False
     elif(ssst=="" and sset==""):
@@ -246,7 +260,7 @@ def get_employees_for_shift(dateofshift):
     print("Today date is: ", today)
 
     # Join equivalent needs to be handled in Supabase: fetch and merge in Python
-    employee = supabase.table("employee").select("emp_id,seniority").order("seniority", desc=False).execute()
+    employee = supabase.table("employee").select("emp_id,seniority, employee_type").order("seniority", desc=False).execute()
     daily_shifts = supabase.table("daily_shift").select("emp_id, shift_start_time, shift_end_time, shift_date").eq("shift_date", str(today)).execute()
     shifts = supabase.table("shift").select("emp_id, shift_start_time, shift_end_time, date").eq("date",str(today)).execute()
     leaves_raw = supabase.table("leaves").select("emp_id, leave_start_date, leave_start_time, leave_end_date, leave_end_time").execute().data
@@ -279,6 +293,7 @@ def get_employees_for_shift(dateofshift):
                 "ssst": s["shift_start_time"],
                 "sset": s["shift_end_time"],
                 "leaves": emp_leaves,
+                "employee_type":e["employee_type"],
             })
         elif ds and not s:
             merged.append({
@@ -288,6 +303,7 @@ def get_employees_for_shift(dateofshift):
                 "ssst": "",
                 "sset": "",
                 "leaves": emp_leaves,
+                "employee_type":e["employee_type"],
             })
     print(merged)
     return merged
@@ -296,46 +312,251 @@ def overlaps_datetime(start1, end1, start2, end2):
     print(start1, end1, start2, end2)
     return start1 < end2 and end1 > start2
 
+EMPLOYMENT_PRIORITY = {
+    "Full Time": 1,
+    "Part Time": 2,
+    "Casual": 3
+}
+
+from datetime import datetime
 
 def assign_tasks(changes):
-    # print(employeetab.get_data(as_text=True))
-    #print(changes["new_clients"][0])
+
     for ch in changes["new_clients"]:
         employeetab = get_employees_for_shift(ch['date'])
-        print(employeetab)
-        print("Hi2",ch)
+
         eligible = [
             e for e in employeetab
-            if (overlaps(ch['shift_start_time'], ch['shift_end_time'],e['dsst'], e['dset'], e['ssst'], e['sset']) and (e['leaves'] == [] or (e['leaves'] and (not overlaps_datetime(ch['shift_start_time'], ch['shift_end_time'], lv['leave_start_time'], lv['leave_end_time']) for lv in e["leaves"]))) )
+            if (
+                overlaps(
+                    e,
+                    ch['shift_start_time'], ch['shift_end_time'],
+                    e['dsst'], e['dset'], e['ssst'], e['sset']
+                )
+                and (
+                    e['leaves'] == []
+                    or all(
+                        not overlaps_datetime(
+                            ch['shift_start_time'], ch['shift_end_time'],
+                            lv['start'], lv['end']
+                        )
+                        for lv in e['leaves']
+                    )
+                )
+            )
         ]
-        print(eligible)
 
         if not eligible:
             print(f"No eligible employee for client {ch['client_id']}")
             continue
 
-        print("Eligible employees:", eligible)
-        best_employee = eligible[0]  # pick the first one
-        print("Assigned employee:", best_employee)
+       
+        eligible.sort(
+            key=lambda e: (
+                EMPLOYMENT_PRIORITY.get(e['employee_type'], 99)
+            )
+        )
+        print("the eligible employees")
+        print(eligible)
+        shift_start = datetime.fromisoformat(ch['shift_start_time'])
+        hours_to_shift = (shift_start - datetime.utcnow()).total_seconds() / 3600
 
-        supabase.table("shift").update({
-            "emp_id": best_employee['emp_id'],
-            "shift_status": "Scheduled"
-        }).eq("client_id", ch['client_id']).eq("shift_id",ch['shift_id']).execute()
+        
+        if hours_to_shift < 24:
+            best_employee = eligible[0]
 
-        print(f"Assigned task {ch['client_id']} to employee {best_employee['emp_id']}")
-        tokens = supabase.table("employee_tokens").select("fcm_token").eq("emp_id", best_employee['emp_id']).execute()
+            supabase.table("shift").update({
+                "emp_id": best_employee['emp_id'],
+                "shift_status": "Scheduled"
+            }).eq("shift_id", ch['shift_id']).execute()
+
+            notify_employee(
+                best_employee["emp_id"],
+                {
+                    "type": "shift_offer",
+                    "shift_id": ch["shift_id"],
+                    "message": "A shift is available. Accept or Reject."
+                }
+            )
+
+            print(f"[AUTO] Assigned shift {ch['shift_id']} to {best_employee['emp_id']}")
+
+        # ============================================================
+        # CASE B: ≥ 24 HOURS → OFFER-BASED FLOW
+        # ============================================================
+        else:
+            offers = []
+
+            for idx, e in enumerate(eligible, start=1):
+                offers.append({
+                    "shift_id": ch["shift_id"],
+                    "emp_id": e["emp_id"],
+                    "status": "sent" if idx == 1 else "pending",
+                    "offer_order": idx,
+                    "sent_at": datetime.utcnow().isoformat() if idx == 1 else None
+                })
+
+            # Insert all offers together
+            supabase.table("shift_offers").insert(offers).execute()
+
+            first_emp = eligible[0]
+
+            notify_employee(
+                first_emp["emp_id"],
+                {
+                    "type": "shift_offer",
+                    "shift_id": ch["shift_id"],
+                    "message": "A shift is available. Accept or Reject."
+                }
+            )
+
+            # send_notification(**notification)
+            #print(notification)
+
+            # Update shift status
+            supabase.table("shift").update({
+                "shift_status": "Offer Sent"
+            }).eq("shift_id", ch["shift_id"]).execute()
+
+            print(f"[OFFER] Shift {ch['shift_id']} sent to {first_emp['emp_id']}")
+
+        #tokens = supabase.table("employee_tokens").select("fcm_token").eq("emp_id", best_employee['emp_id']).execute()
         # fcm_tok = tokens.data[0]["fcm_token"].strip()
         # print(fcm_tok)
         # send_notification(fcm_tok,"New Shift Assigned", f"Shift scheduled from {ch['shift_start_time']} to {ch['shift_end_time']}, time: {datetime.now()}")
         schedule()
 
+def accept_shift_offer(shift_id, emp_id):
+
+    assigned = (
+        supabase.table("shift")
+        .select("emp_id")
+        .eq("shift_id", shift_id)
+        .execute()
+    )
+
+    if assigned.data and assigned.data[0]["emp_id"]:
+        return {"error": "Shift already assigned"}
+
+    supabase.table("shift").update({
+        "emp_id": emp_id,
+        "shift_status": "Scheduled"
+    }).eq("shift_id", shift_id).execute()
+
+    supabase.table("shift_offers").update({
+        "status": "accepted",
+        "responded_at": datetime.utcnow().isoformat()
+    }).eq("shift_id", shift_id).eq("emp_id", emp_id).execute()
+
+    supabase.table("shift_offers").update({
+        "status": "expired"
+    }).eq("shift_id", shift_id).neq("emp_id", emp_id).execute()
+
+    return {"success": True}
+
+def activate_next_offer(shift_id):
+    # Get current offers ordered by priority
+    offers = supabase.table("shift_offers") \
+        .select("*") \
+        .eq("shift_id", shift_id) \
+        .order("offer_order") \
+        .execute().data
+
+    # Find next pending employee
+    next_offer = next((o for o in offers if o["status"] == "pending"), None)
+
+    if not next_offer:
+        # No one left
+        supabase.table("shift").update({
+            "shift_status": "Unassigned"
+        }).eq("shift_id", shift_id).execute()
+
+        print(f"[FAILED] No employee accepted shift {shift_id}")
+        return
+
+    # Activate next offer
+    supabase.table("shift_offers").update({
+        "status": "sent",
+        "sent_at": datetime.utcnow().isoformat()
+    }).eq("id", next_offer["id"]).execute()
+
+    '''send_notification(
+        next_offer["emp_id"],
+        "Shift Available",
+        "A shift is available. Accept to be assigned.",
+        "shift_offer",
+        {"shift_id": shift_id}
+    )'''
+
+    print(f"[NEXT OFFER] Sent to {next_offer['emp_id']}")
 
 
 # ---- Your Scheduling Logic ----
 def run_scheduling(changes):
     print("Scheduling triggered due to changes:", changes)
     assign_tasks(changes)
+
+@app_notif.websocket("/ws/{emp_id}")
+async def websocket_endpoint(websocket: WebSocket, emp_id: int):
+    await websocket.accept()
+    active_connections[int(emp_id)] = websocket
+    print(f"[WS CONNECTED] emp_id={emp_id}")
+
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        active_connections.pop(int(emp_id), None)
+        print(f"[WS DISCONNECTED] emp_id={emp_id}")
+
+async def send_offer_notification(emp_id, shift_id):
+    ws = active_connections.get(emp_id)
+    if ws:
+        await ws.send_text(json.dumps({
+            "type": "shift_offer",
+            "shift_id": shift_id,
+            "message": "A shift is available. Accept or Reject."
+        }))
+
+def notify_employee(emp_id: int, payload: dict):
+    ws = active_connections.get(emp_id)
+    if not ws:
+        print(f"[WS OFFLINE] emp_id={emp_id}")
+        return
+
+    async def _send():
+        await ws.send_text(json.dumps(payload))
+
+    asyncio.create_task(_send())
+
+@app.route("/shift_offer/respond", methods=["POST"])
+def respond_to_offer():
+    data = request.json
+    shift_id = data["shift_id"]
+    emp_id = data["emp_id"]
+    response = data["response"]  # accepted / rejected
+
+    if response == "accepted":
+        accept_shift_offer(shift_id, emp_id)
+
+        notify_employee(
+            emp_id,
+            {
+                "type": "offer_result",
+                "status": "accepted",
+                "shift_id": shift_id
+            }
+        )
+        return jsonify({"status": "assigned"}), 200
+
+    else:
+        supabase.table("shift_offers").update({
+            "status": "rejected",
+            "responded_at": datetime.utcnow().isoformat()
+        }).eq("shift_id", shift_id).eq("emp_id", emp_id).execute()
+
+        activate_next_offer(shift_id)
+        return jsonify({"status": "rejected"}), 200
 
 
 
@@ -404,8 +625,8 @@ def register():
                 "shift_date":str(final_date),
                 "emp_id": newemp_id,
                 "shift_type": "flw-rtw",
-                "shift_start_time":f"{shift_date} {sh['start']}:00",
-                "shift_end_time":f"{shift_date} {sh['end']}:00"
+                "shift_start_time":f"{shift_date} {sh["start"]}:00",
+                "shift_end_time":f"{shift_date} {sh["end"]}:00"
             }).execute()
 
 
@@ -576,7 +797,7 @@ def login():
 @app.route('/protected')
 def protected():
     if 'emp_id' in session:
-        return jsonify({'message': f'Welcome, user {session["emp_id"]}!'})
+        return jsonify({'message': f'Welcome, user {session['emp_id']}!'})
     else:
         return jsonify({'message': 'Unauthorized'}), 401
 
@@ -600,17 +821,17 @@ def get_clients():
         return jsonify({"error": str(e)}), 500
     
 STATUS_CONFIG = {
-    "TRAINING": {"label": "Training", "color": "green"},
-    "FLW-RTW": {"label": "Training", "color": "green"},
+    "TRAINING": {"label": "TRN", "color": "green"},
+    "FLW-RTW": {"label": "FLW", "color": "green"},
 
-    "LEAVE": {"label": "On Leave", "color": "red"},
+    "LEAVE": {"label": "LV", "color": "red"},
 
-    "CLOCKED_IN": {"label": "Clocked In", "color": "orange"},
-    "CLOCKED_OUT": {"label": "Clocked Out", "color": "aqua"},
+    "CLOCKED_IN": {"label": "IN", "color": "orange"},
+    "CLOCKED_OUT": {"label": "OUT", "color": "aqua"},
 
-    "OFFER_SENT": {"label": "Offer Sent", "color": "purple"},
+    "OFFER_SENT": {"label": "OFR", "color": "purple"},
 
-    "WAITING": {"label": "Available", "color": "gray"}
+    "WAITING": {"label": "WT", "color": "gray"}
 }
 
 @app.route('/employees', methods=['GET'])
@@ -622,7 +843,7 @@ def get_employees():
 
 
         if response:
-            return jsonify({"employee": response})
+            return response
         return jsonify({"error": str(response)}), 400
     
     except Exception as e:
@@ -682,28 +903,20 @@ def get_employees_with_status():
     result = []
 
     for emp in employees:
-        # Compute current shift/leave status
-        shift_status = resolve_employee_status(
+        status = resolve_employee_status(
             emp["emp_id"],
             shifts,
             leaves,
             
         )
-        
-        # Create a copy of emp to avoid mutating the original
-        emp_data = emp.copy()
-        
-        # Preserve the database 'status' field for Active/Inactive determination
-        # and add the computed shift_status for display
-        emp_data.update({
-            "shift_status": {
-                "label": shift_status["label"],
-                "color": shift_status["color"]
-            }
-            # Keep the original 'status' field from database
-        })
 
-        result.append(emp_data)
+        result.append({
+            "emp_id": emp["emp_id"],
+            "first_name": emp["first_name"],
+            "last_name": emp.get("last_name", ""),
+            "service_type": emp.get("service_type"),
+            "status": status
+        })
 
     return result
         
@@ -711,25 +924,6 @@ def get_employees_with_status():
 def get_injury_reports():
     response = supabase.table("injury_reports").select("*").execute()
     return jsonify(response.data)
-
-@app.route("/injury_reports/<int:id>", methods=["DELETE"])
-def delete_injury_report(id):
-    try:
-        supabase.table("injury_reports").delete().eq("id", id).execute()
-        return jsonify({"message": "Report deleted successfully"}), 200
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/injury_reports/<int:id>/status", methods=["PUT"])
-def update_injury_status(id):
-    try:
-        data = request.get_json()
-        status = data.get("status")
-        supabase.table("injury_reports").update({"status": status}).eq("id", id).execute()
-        return jsonify({"message": "Status updated successfully"}), 200
-    except Exception as e:
-        print(e)
-        return jsonify({"error": str(e)}), 500
 
 
 SUPERVISOR_EMAIL = "hemangee4700@gmail.com"
@@ -775,7 +969,7 @@ def send_injury_report():
 
         # SMTP Setup (for example Gmail)
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
-            smtp.login("hemangee4700@gmail.com", os.getenv("EMAIL_PASSWORD", "YOUR_EMAIL_APP_PASSWORD"))
+            smtp.login("hemangee4700@gmail.com", "hvvm jfdz rkjs ynly")
             smtp.send_message(msg)
         insert_data = {
             "date": date_of_incident,
@@ -837,139 +1031,165 @@ def generate_next_month_shifts():
         data = request.get_json()
         emp_id = data.get("emp_id")
 
-        # Get employee's daily_shift timings
-        daily_timeline = (
+        if not emp_id:
+            return jsonify({"error": "emp_id is required"}), 400
+
+        # 1️⃣ Fetch weekly shift template
+        timeline_res = (
             supabase.table("employee_daily_timeline")
-            .select("shift_start_time, shift_end_time, week_day")
+            .select("week_day, shift_start_time, shift_end_time")
             .eq("emp_id", emp_id)
             .execute()
         )
 
-        if not daily_timeline.data:
-            return jsonify({"error": "No daily shift found for employee"}), 404
-        for daily_shift in daily_timeline.data:
-            # print(daily_shift)
-            shift_start_time = daily_shift["shift_start_time"]
-            shift_end_time = daily_shift["shift_end_time"]
-            # print(shift_start_time)
+        if not timeline_res.data:
+            return jsonify({"error": "No weekly timeline found"}), 404
 
-            timeline_map = {
-                daily_shift["week_day"].capitalize(): {
-                    "start": shift_start_time,
-                    "end": shift_end_time,
-                }
-                for entry in daily_shift
+        timeline_map = {
+            row["week_day"].capitalize(): {
+                "start": row["shift_start_time"],
+                "end": row["shift_end_time"]
             }
+            for row in timeline_res.data
+        }
 
-            # --- Calculate Next Month ---
-            today = datetime.today()
-            next_month = today.month + 1 if today.month < 12 else 1
-            year = today.year if today.month < 12 else today.year + 1
+        # 2️⃣ Find last scheduled shift date
+        last_shift_res = (
+            supabase.table("daily_shift")
+            .select("shift_date")
+            .eq("emp_id", emp_id)
+            .order("shift_date", desc=True)
+            .limit(1)
+            .execute()
+        )
 
-            first_day = datetime(year, next_month, 1)
-            _, last_day_num = calendar.monthrange(year, next_month)
-            last_day = datetime(year, next_month, last_day_num)
+        if last_shift_res.data:
+            start_date = datetime.strptime(
+                last_shift_res.data[0]["shift_date"], "%Y-%m-%d"
+            ) + timedelta(days=1)
+        else:
+            start_date = datetime.today()
 
-            # --- Generate weekday entries ---
-            new_entries = []
-            for n in range((last_day - first_day).days + 1):
-                current_date = first_day + timedelta(days=n)
-                weekday_name = current_date.strftime("%A")  # e.g., 'Monday'
+        # 3️⃣ End date = 6 weeks (42 days)
+        end_date = start_date + timedelta(days=41)
 
-                if weekday_name in timeline_map:
-                    shift_start_time = timeline_map[weekday_name]["start"]
-                    shift_end_time = timeline_map[weekday_name]["end"]
+        # 4️⃣ Generate shifts
+        new_entries = []
+        current_date = start_date
 
-                    new_entries.append({
-                        "emp_id": emp_id,
-                        "shift_date": current_date.strftime("%Y-%m-%d"),
-                        "shift_start_time": f"{current_date.strftime('%Y-%m-%d')} {shift_start_time}",
-                        "shift_end_time": f"{current_date.strftime('%Y-%m-%d')} {shift_end_time}",
-                        "shift_type":"flw-rtw",
-                    })
+        while current_date <= end_date:
+            weekday = current_date.strftime("%A")
 
-            # Insert all into Supabase
-            if new_entries:
-                # print(new_entries)
-                supabase.table("daily_shift").insert(new_entries).execute()
+            if weekday in timeline_map:
+                date_str = current_date.strftime("%Y-%m-%d")
+                start_time = timeline_map[weekday]["start"]
+                end_time = timeline_map[weekday]["end"]
 
-            return jsonify({
-                "message": f"{len(new_entries)} shifts added for next month.",
-                "count": len(new_entries)
-            }), 200
-        
+                new_entries.append({
+                    "emp_id": emp_id,
+                    "shift_date": date_str,
+                    "shift_start_time": f"{date_str} {start_time}",
+                    "shift_end_time": f"{date_str} {end_time}",
+                    "shift_type": "flw-rtw"
+                })
+
+            current_date += timedelta(days=1)
+
+        # 5️⃣ Insert into Supabase
+        if new_entries:
+            supabase.table("daily_shift").insert(new_entries).execute()
+
+        return jsonify({
+            "message": "Next 6 weeks schedule generated",
+            "count": len(new_entries),
+            "from": start_date.strftime("%Y-%m-%d"),
+            "to": end_date.strftime("%Y-%m-%d")
+        }), 200
 
     except Exception as e:
         print("Error generating shifts:", e)
         return jsonify({"error": str(e)}), 500
 
+
 @app.route("/client_generate_next_month_shifts", methods=["POST"])
 def client_generate_next_month_shifts():
-    
     try:
         data = request.get_json()
         client_id = data.get("client_id")
 
-        # Get employee's daily_shift timings
-        daily_timeline = (
+        if not client_id:
+            return jsonify({"error": "client_id is required"}), 400
+
+        # 1️⃣ Fetch weekly schedule template
+        weekly_timeline = (
             supabase.table("client_weekly_schedule")
-            .select("start_time, end_time, week_day")
+            .select("week_day, start_time, end_time")
             .eq("client_id", client_id)
             .execute()
         )
-        print(daily_timeline.data)
-        if not daily_timeline.data:
-            return jsonify({"error": "No daily shift found for client"}), 404
-        for daily_shift in daily_timeline.data:
-            # print(daily_shift)
-            shift_start_time = daily_shift["start_time"]
-            shift_end_time = daily_shift["end_time"]
-            # print(shift_start_time)
 
-            timeline_map = {
-                daily_shift["week_day"].capitalize(): {
-                    "start": shift_start_time,
-                    "end": shift_end_time,
-                }
-                for entry in daily_shift
+        if not weekly_timeline.data:
+            return jsonify({"error": "No weekly schedule found for client"}), 404
+
+        timeline_map = {
+            row["week_day"].capitalize(): {
+                "start": row["start_time"],
+                "end": row["end_time"]
             }
+            for row in weekly_timeline.data
+        }
 
-            # --- Calculate Next Month ---
-            today = datetime.today()
-            next_month = today.month + 1 if today.month < 12 else 1
-            year = today.year if today.month < 12 else today.year + 1
+        # 2️⃣ Find last scheduled date
+        last_shift_res = (
+            supabase.table("shift")
+            .select("date")
+            .eq("client_id", client_id)
+            .order("date", desc=True)
+            .limit(1)
+            .execute()
+        )
 
-            first_day = datetime(year, next_month, 1)
-            _, last_day_num = calendar.monthrange(year, next_month)
-            last_day = datetime(year, next_month, last_day_num)
+        if last_shift_res.data:
+            start_date = datetime.strptime(
+                last_shift_res.data[0]["date"], "%Y-%m-%d"
+            ) + timedelta(days=1)
+        else:
+            start_date = datetime.today()
 
-            # --- Generate weekday entries ---
-            new_entries = []
-            for n in range((last_day - first_day).days + 1):
-                current_date = first_day + timedelta(days=n)
-                weekday_name = current_date.strftime("%A")  # e.g., 'Monday'
+        # 3️⃣ 6-week window
+        end_date = start_date + timedelta(days=41)
 
-                if weekday_name in timeline_map:
-                    shift_start_time = timeline_map[weekday_name]["start"]
-                    shift_end_time = timeline_map[weekday_name]["end"]
+        # 4️⃣ Generate shifts
+        new_entries = []
+        current_date = start_date
 
-                    new_entries.append({
-                        "client_id": client_id,
-                        "date": current_date.strftime("%Y-%m-%d"),
-                        "shift_start_time": f"{current_date.strftime('%Y-%m-%d')} {shift_start_time}",
-                        "shift_end_time": f"{current_date.strftime('%Y-%m-%d')} {shift_end_time}",
-                    })
+        while current_date <= end_date:
+            weekday = current_date.strftime("%A")
 
-            # Insert all into Supabase
-            if new_entries:
-                # print(new_entries)
-                supabase.table("shift").insert(new_entries).execute()
+            if weekday in timeline_map:
+                date_str = current_date.strftime("%Y-%m-%d")
+                start_time = timeline_map[weekday]["start"]
+                end_time = timeline_map[weekday]["end"]
+
+                new_entries.append({
+                    "client_id": client_id,
+                    "date": date_str,
+                    "shift_start_time": f"{date_str} {start_time}",
+                    "shift_end_time": f"{date_str} {end_time}",
+                })
+
+            current_date += timedelta(days=1)
+
+        # 5️⃣ Insert into Supabase
+        if new_entries:
+            supabase.table("shift").insert(new_entries).execute()
 
         return jsonify({
-            "message": "shifts added for next month.",
-            "count": len(new_entries)
+            "message": "Next 6 weeks shifts generated",
+            "count": len(new_entries),
+            "from": start_date.strftime("%Y-%m-%d"),
+            "to": end_date.strftime("%Y-%m-%d")
         }), 200
-        
 
     except Exception as e:
         print("Error generating shifts:", e)
@@ -1037,6 +1257,7 @@ def leave_processing(emp_id,leave_start_date,leave_end_date,leave_start_time,lea
     # 4️⃣ Auto-reschedule the unassigned items
     if unassigned:
         changes = {"new_clients": unassigned}
+        print("Unassigned", changes)
         assign_tasks(changes)
 
     return jsonify({
@@ -1092,7 +1313,7 @@ def update_employee_settings(emp_id):
 def masterSchedule(service: str):
     print(service)
     emp_res = supabase.table("employee") \
-        .select("*") \
+        .select("emp_id, first_name, address") \
         .eq("service_type", service) \
         .execute()
     employees = emp_res.data
@@ -1127,8 +1348,7 @@ def masterSchedule(service: str):
                 shifts.append({
                     "time": "",
                     "type": "open",
-                    "training": False,
-                    "date": d.isoformat()
+                    "training": False
                 })
                 continue
             
@@ -1152,16 +1372,11 @@ def masterSchedule(service: str):
                     shift["shift_code"] = "evening"    # e
 
                 time_code = SHIFT_CONVENTIONS[service][shift["shift_code"]]
-
+            
             shifts.append({
                 "time": time_code,
-                "type": SHIFT_TYPE_MAP.get(shift["shift_type"], ""),
-                "training": shift.get("training", False),
-                "shift_id": shift.get("id"),
-                "start_time": shift.get("shift_start_time"),
-                "end_time": shift.get("shift_end_time"),
-                "shift_date": shift.get("shift_date"),
-                "shift_type_raw": shift.get("shift_type")
+                "type": SHIFT_TYPE_MAP.get(shift["shift_type"], "flw-rtw"),
+                "training": shift.get("training", False)
             })
         
         leave_res = supabase.table("leaves") \
@@ -1207,10 +1422,7 @@ def masterSchedule(service: str):
                 shifts[idx]={
                     "time": "",              # no d/n/e for leave
                     "type": shift_type,
-                    "training": False,
-                    "date": d.isoformat(),
-                    "is_leave": True,
-                    "leave_reason": leave.get("leave_reason")
+                    "training": False
                 }
                 continue
 
@@ -1219,7 +1431,6 @@ def masterSchedule(service: str):
         "id": emp["emp_id"],
         "name": emp["first_name"],
         "address": emp["address"],
-        "capacity": emp.get("capacity") or emp.get("full_time") or emp.get("employment_type") or emp.get("role") or "",
         "shifts": shifts
         })
 
@@ -1247,60 +1458,111 @@ SHIFT_TYPE_MAP = {
     "leave": "leave",
     "sick": "sick",
     "bereavement": "bereavement",
-    "vacant": "vacant",
-    "Vacant": "vacant",
-    "on hold": "on-hold",
-    "On Hold": "on-hold",
-    "cancelled": "cancelled",
-    "Cancelled": "cancelled",
-    "offered": "offered",
-    "Offered": "offered",
-    "scheduled": "scheduled",
-    "Scheduled": "scheduled",
-    "clocked": "clocked",
-    "Clocked": "clocked",
-    "late": "late",
-    "Late": "late",
-    "completed": "completed",
-    "Completed": "completed",
-    "missed": "missed",
-    "Missed": "missed",
-    "approved": "approved",
-    "Approved": "approved"
 }
 def get_6_week_dates(start_date: date):
     return [start_date + timedelta(days=i) for i in range(42)]
-
 
 @app.route("/update_master_shift", methods=["POST"])
 def update_master_shift():
     try:
         data = request.get_json()
-        shift_id = data.get("shift_id")
-        
-        if not shift_id:
-            return jsonify({"error": "Missing shift_id"}), 400
 
-        # Prepare update payload
-        to_update = {
-            "shift_start_time": data.get("shift_start_time"),
-            "shift_end_time": data.get("shift_end_time"),
-            "shift_type": data.get("shift_type"),
-            "shift_date": data.get("shift_date")
+        emp_id = data.get("emp_id")
+        shift_type = data.get("shift_type")
+        shift_date = data.get("shift_date")
+        start_time = data.get("shift_start_time")
+        end_time = data.get("shift_end_time")
+        prev_type = data.get("type")
+
+        if not emp_id or not shift_type or not shift_date:
+            return jsonify({"error": "Missing required fields"}), 400
+
+        start_dt = f"{shift_date} {start_time}"
+        end_dt = f"{shift_date} {end_time}"
+
+        DAILY_SHIFT_TYPES = {
+            "flw-rtw",
+            "flw-training",
+            "gil",
+            "float",
+            "open"
         }
-        
-        # Remove None values
-        to_update = {k: v for k, v in to_update.items() if v is not None}
 
-        # Be careful with ID column name. In masterSchedule we used 'id'. 
-        response = supabase.table("daily_shift").update(to_update).eq("id", shift_id).execute()
+        LEAVE_TYPES = {
+            "leave",
+            "vacation",
+            "sick",
+            "bereavement",
+            "unavailable"
+        }
+
+        if prev_type == "open":
+
+            # 🟢 DAILY SHIFT
+            if shift_type in DAILY_SHIFT_TYPES:
+                supabase.table("daily_shift").insert({
+                    "emp_id": emp_id,
+                    "shift_date": shift_date,
+                    "shift_start_time": start_time,
+                    "shift_end_time": end_time,
+                    "shift_type": shift_type
+                }).execute()
+
+            # 🔴 LEAVE
+            elif shift_type in LEAVE_TYPES:
+                supabase.table("leaves").insert({
+                    "emp_id": emp_id,
+                    "leave_start_date": shift_date,
+                    "leave_end_date":shift_date,
+                    "leave_start_time": start_time,
+                    "leave_end_time": end_time,
+                    "leave_type": shift_type
+                }).execute()
+        else:
+            supabase.table("daily_shift") \
+                .delete() \
+                .eq("emp_id", emp_id) \
+                .eq("shift_date", shift_date) \
+                .execute()
+
+            supabase.table("leaves") \
+                .delete() \
+                .eq("emp_id", emp_id) \
+                .eq("leave_start_date", shift_date) \
+                .execute()
+
+            # Then insert updated version
+            if shift_type in LEAVE_TYPES:
+                supabase.table("leaves").insert({
+                    "emp_id": emp_id,
+                    "leave_start_date": shift_date,
+                    "leave_end_date": shift_date,
+                    "leave_start_time": start_time,
+                    "leave_end_time": end_time,
+                    "leave_type": shift_type
+                }).execute()
+            else:
+                supabase.table("daily_shift").insert({
+                    "emp_id": emp_id,
+                    "shift_date": shift_date,
+                    "shift_start_time": start_time,
+                    "shift_end_time": end_time,
+                    "shift_type": shift_type
+                }).execute()
+
+            return jsonify({"message": "Existing shift updated"}), 200
         
-        return jsonify({"message": "Shift updated", "data": response.data}), 200
+
+        return jsonify({"message": "Shift updated successfully"}), 200
 
     except Exception as e:
-        print("Error updating master shift:", e)
+        print("ERROR:", e)
         return jsonify({"error": str(e)}), 500
+
+
+
 
 # --- Run ---
 if __name__ == '__main__':
     app.run(debug=True)
+

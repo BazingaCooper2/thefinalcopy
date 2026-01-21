@@ -1,9 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import '../../node_modules/bootstrap-icons/font/bootstrap-icons.css';
+import { useAuth } from "../App";
+
 
 export default function Navbar() {
-  const [currentDate, setCurrentDate] = useState(new Date());
+    const [currentDate, setCurrentDate] = useState(new Date());
+    const { user } = useAuth();
 
   const formatTime = (date) => {
     const hours = date.getHours().toString().padStart(2, '0');
@@ -33,22 +36,29 @@ export default function Navbar() {
         {/* Brand Logo */}
         <div className="navbar-brand-modern d-flex align-items-center gap-2">
           <i className="bi bi-heart-pulse-fill"></i>
-          Geri-Assist
+                  ZaqenCare
         </div>
 
         {/* Right Section */}
         <div className="d-flex align-items-center gap-3">
-          {/* Auth Links */}
-          <div className="d-none d-lg-flex gap-2">
-            <Link to="/login" className="navbar-link-modern">
-              <i className="bi bi-box-arrow-in-right me-1"></i>
-              Login
-            </Link>
-            <Link to="/register" className="navbar-link-modern">
-              <i className="bi bi-person-plus me-1"></i>
-              Register
-            </Link>
-          </div>
+                  {/* Auth Links */}
+                  {!user ? (
+                      <div className="d-none d-lg-flex gap-2">
+                          <Link to="/login" className="navbar-link-modern">
+                              <i className="bi bi-box-arrow-in-right me-1"></i>
+                              Login
+                          </Link>
+                          <Link to="/register" className="navbar-link-modern">
+                              <i className="bi bi-person-plus me-1"></i>
+                              Register
+                          </Link>
+                      </div>
+                  ) : (
+                      <div className="d-none d-lg-flex gap-2">
+                          <span className="navbar-link-modern"><i className="bi bi-person me-1"> {user["first_name"]}</i></span>
+                          <Link to="/logout" className="navbar-link-modern"><i className="bi bi-box-arrow-in-left me-1"></i>Logout</Link>
+                      </div>
+                  )}
 
           {/* Mobile Auth Icons */}
           <div className="d-lg-none d-flex gap-2">

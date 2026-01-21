@@ -11,14 +11,12 @@ export default function DashboardCard({ label, value, icon, color }) {
 
   // Get icon based on label or use default
   const getIcon = () => {
-    if (label.toLowerCase().includes('visit')) return 'bi-calendar-check-fill';
-    if (label.toLowerCase().includes('clock')) return 'bi-clock-fill';
-    if (label.toLowerCase().includes('skill')) return 'bi-award-fill';
-    if (label.toLowerCase().includes('form')) return 'bi-file-text-fill';
-    if (label.toLowerCase().includes('ticket')) return 'bi-ticket-detailed-fill';
-    if (label.toLowerCase().includes('task')) return 'bi-list-check';
-    if (label.toLowerCase().includes('alert') || label.toLowerCase().includes('covid')) return 'bi-exclamation-triangle-fill';
-    if (label.toLowerCase().includes('request')) return 'bi-chat-left-dots-fill';
+      if (label.toLowerCase().includes('visit')) return 'bi-calendar-check-fill';
+      if (label.toLowerCase().includes('clocked')) return 'bi-clock-fill';
+      if (label.toLowerCase().includes('offers')) return 'bi-file-text-fill';
+      if (label.toLowerCase().includes('available')) return 'bi-ticket-detailed-fill';
+      if (label.toLowerCase().includes('leave') || label.toLowerCase().includes('unavailable')) return 'bi-exclamation-triangle-fill';
+      if (label.toLowerCase().includes('sick')) return 'bi-chat-left-dots-fill';
     return 'bi-graph-up-arrow';
   };
 

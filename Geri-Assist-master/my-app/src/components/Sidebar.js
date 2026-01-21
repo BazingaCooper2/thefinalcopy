@@ -31,6 +31,11 @@ export default function Sidebar() {
         },
         {
             icon: 'bi-calendar-check',
+            label: 'ShiftOffers',
+            path: '/shift-offers',
+        },
+        {
+            icon: 'bi-calendar-check',
             label: 'Schedule',
             hasDropdown: true,
             dropdown: [

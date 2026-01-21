@@ -255,8 +255,8 @@ export default function DailySchedule() {
                                         <div className="employee-time-slots">
                                             {dailyShift && dailyShift.shift_start_time && dailyShift.shift_end_time && (() => {
                                                 // Parse time strings (format: "HH:MM")
-                                                const [startHour, startMin] = dailyShift.shift_start_time.split(':').map(Number);
-                                                const [endHour, endMin] = dailyShift.shift_end_time.split(':').map(Number);
+                                                const [startHour, startMin, startSec] = dailyShift.shift_start_time.split(' ')[1].split(':').map(Number);
+                                                const [endHour, endMin, endSec] = dailyShift.shift_end_time.split(' ')[1].split(':').map(Number);
 
                                                 const startTime = startHour + (startMin / 60);
                                                 const endTime = endHour + (endMin / 60);

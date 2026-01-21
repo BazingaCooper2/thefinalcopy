@@ -146,16 +146,16 @@ const HazardForm = ({ onSubmit, loading }) => {
         <div className="col-md-6"><label className="form-label">Primary Work Location</label><input name="work_location" className="form-control" onChange={handleChange} /></div>
         <div className="col-md-6"><label className="form-label">Supervisor/Designate Notified</label><input name="supervisor_notified" className="form-control" placeholder="Name of supervisor" onChange={handleChange} /></div>
 
-        <div className="col-md-3"><label className="form-label">Date Reported</label><input type="date" name="date_reported" className="form-control" onChange={handleChange} /></div>
-        <div className="col-md-3"><label className="form-label">Time Reported</label><input type="time" name="time_reported" className="form-control" onChange={handleChange} /></div>
+        <div className="col-md-3"><label className="form-label">Date Reported</label><input type="date" name="reported_date" className="form-control" onChange={handleChange} /></div>
+        <div className="col-md-3"><label className="form-label">Time Reported</label><input type="time" name="reported_time" className="form-control" onChange={handleChange} /></div>
 
-        <div className="col-md-3"><label className="form-label">Date of Incident</label><input type="date" name="date_of_incident" className="form-control" onChange={handleChange} /></div>
-        <div className="col-md-3"><label className="form-label">Time of Incident</label><input type="time" name="time_of_incident" className="form-control" onChange={handleChange} /></div>
+        <div className="col-md-3"><label className="form-label">Date of Incident</label><input type="date" name="incident_date" className="form-control" onChange={handleChange} /></div>
+        <div className="col-md-3"><label className="form-label">Time of Incident</label><input type="time" name="incident_time" className="form-control" onChange={handleChange} /></div>
 
-        <div className="col-md-6"><label className="form-label">Location of Incident</label><input name="location" className="form-control" onChange={handleChange} /></div>
+        <div className="col-md-6"><label className="form-label">Location of Incident</label><input name="incident_location" className="form-control" onChange={handleChange} /></div>
         <div className="col-md-6">
           <label className="form-label">Documented on Hazard Board?</label>
-          <select name="on_hazard_board" className="form-select" onChange={handleChange}>
+          <select name="document_on_hazard_board" className="form-select" onChange={handleChange}>
             <option value="No">No</option>
             <option value="Yes">Yes</option>
           </select>

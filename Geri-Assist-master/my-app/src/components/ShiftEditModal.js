@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from "react";
 import Modal from "./editModal";
 
-export default function ShiftEditModal({ isOpen, onClose, shift, onSave }) {
+export default function ShiftEditModal({ isOpen, onClose, shift, emp_id, onSave }) {
+    console.log("shift:", shift, emp_id);
     const [formData, setFormData] = useState({
         shift_date: "",
         start_time: "",
         end_time: "",
-        shift_type: ""
+        shift_type: "",
+        pre_type: ""
     });
 
     // Helper to format full datetime string to YYYY-MM-DD
@@ -29,11 +31,12 @@ export default function ShiftEditModal({ isOpen, onClose, shift, onSave }) {
 
     useEffect(() => {
         if (shift) {
+            console.log(shift);
             setFormData({
                 shift_date: getDateDate(shift.shift_date || shift.date),
                 start_time: getDateTime(shift.start_time),
                 end_time: getDateTime(shift.end_time),
-                shift_type: shift.shift_type_raw || shift.type || ""
+                shift_type: shift.shift_type_raw || shift.type || "",
             });
         }
     }, [shift]);
@@ -112,10 +115,16 @@ export default function ShiftEditModal({ isOpen, onClose, shift, onSave }) {
                         onChange={handleChange}
                         style={{ width: "100%", padding: "8px", border: "1px solid #ccc", borderRadius: "4px" }}
                     >
-                        <option value="flw-rtw">Floater/Return to Work</option>
-                        <option value="training">Training</option>
-                        <option value="regular">Regular</option>
-                        <option value="">Other</option>
+                        <option value="vacation">Vacation</option>
+                        <option value="float">Float</option>
+                        <option value="unavailable">Unavailable</option>
+                        <option value="flw-training">FLW Training</option>
+                        <option value="flw-rtw">FLW RTW</option>
+                        <option value="gil">GIL</option>
+                        <option value="open">Open</option>
+                        <option value="sick">Sick</option>
+                        <option value="leave">Leave</option>
+                        <option value="bereavement">Bereavement</option>
                     </select>
                 </div>
 

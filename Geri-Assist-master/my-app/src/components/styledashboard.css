@@ -1,4 +1,4 @@
-.body{
+﻿.body{
   padding: 20px 24px 28px;
 }
 .navalign{
@@ -389,47 +389,53 @@
   border-bottom: 3px solid #0d6efd;
 }
 
-.schedule-grid {
-    border: 1px solid #ddd;
+/*.schedule-grid {
     display: flex;
     flex-direction: column;
+    width: 100%;
+}*/
+
+.schedule-header {
+    display: grid;
+    grid-template-columns: 80px repeat(7, 1fr);
 }
 
-.schedule-header, .schedule-body {
-    display: grid;
-    grid-template-columns: 100px repeat(14, 1fr);
+.schedule-body {
+    display: flex;
 }
 
 .time-col {
-    background: #f8f9fa;
-}
-
-.time-cell {
-    height: 60px;
-    border-bottom: 1px solid #eee;
-    padding-left: 5px;
-    font-size: 12px;
+    width: 70px;
 }
 
 .day-col {
-    border-left: 1px solid #eee;
-    position: relative;
+    flex: 1;
+    border-left: 1px solid #ddd;
 }
 
-.column-container {
-    position: relative;
-    height: calc(60px * 16); /* 16 hours (07�22) */
+/* 🔑 THIS DEFINES THE VERTICAL TIMELINE */
+.day-grid {
+    position: absolute;
+    height: 1440px; /* 24h × 60min */
 }
 
+/* shift positioning now WORKS */
 .shift-block {
     position: absolute;
-    left: 5px;
-    right: 5px;
-    background: #e1f3ff;
-    border-left: 4px solid #0d6efd;
-    padding: 4px;
-    border-radius: 4px;
-    font-size: 11px;
+    left: 5%;
+    width: 90%;
+    border-radius: 6px;
+    padding: 6px;
+    font-size: 12px;
+    z-index: 10;
+}
+
+.daily-shift {
+    background: rgba(13, 202, 240, 0.4);
+}
+
+.day-grid {
+    background: rgba(255, 0, 0, 0.05);
 }
 
 

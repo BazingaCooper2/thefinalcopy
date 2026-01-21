@@ -153,6 +153,7 @@ const EmployeeDetailsEach = () => {
                             ></div>
                         </OverlayTrigger>
 
+
                         //    <div className="fw-bold" >
                         //        {shift.shift_start_time.slice(11, 16)} – {shift.shift_end_time.slice(11, 16)}
                         //    </div>
@@ -170,11 +171,8 @@ const EmployeeDetailsEach = () => {
         overview: true,
         demographics: false,
         skills: false,
-        forms: false,
         schedule: false,
-        timesheet: false,
         employment: false,
-        tasks: false,
         clients: false,
     });
     const [showsubtab, setShowsubtab] = useState({
@@ -222,7 +220,7 @@ const EmployeeDetailsEach = () => {
                         <h3 className="fw-bold">
                             {employee.first_name} {employee.last_name}
                         </h3>
-                        <span className="badge bg-success">{employee.status?.label || employee.status_label || employee.status || 'N/A'}</span>
+                        <span className="badge bg-success">{employee.status_label || employee.status || 'N/A'}</span>
                         <div className="text-muted small mt-2">
                             {employee.designation} • {employee.city} •{" "}
                             {employee.service_type} • <strong>Emp ID:</strong>{" "}
@@ -238,11 +236,8 @@ const EmployeeDetailsEach = () => {
                         "demographics",
                         "clients",
                         "skills",
-                        "forms",
                         "schedule",
-                        "timesheet",
                         "employment",
-                        "tasks",
                     ].map((tab) => (
                         <span
                             key={tab}
@@ -284,11 +279,11 @@ const EmployeeDetailsEach = () => {
                         {/* SCHEDULE GRID */}
                         <div className="schedule-grid">
 
-                            {/* DAY HEADERS */}
+                            {/* HEADER */}
                             <div className="schedule-header">
                                 <div className="time-col"></div>
-                                {days.map((d) => (
-                                    <div className="day-col" key={d.toISOString()}>
+                                {days.map(d => (
+                                    <div className="day-col-header" key={d.toISOString()}>
                                         {formatDay(d)}
                                     </div>
                                 ))}
@@ -296,47 +291,56 @@ const EmployeeDetailsEach = () => {
 
                             {/* BODY */}
                             <div className="schedule-body">
+
+                                {/* TIME COLUMN */}
                                 <div className="time-col">
-                                    {hours.map((h) => (
-                                        <div className="time-cell" key={h}>
-                                            {h}
-                                        </div>
+                                    {hours.map(h => (
+                                        <div className="time-cell" key={h}>{h}</div>
                                     ))}
                                 </div>
 
-                                {days.map((day) => (
-                                    <div className="day-col" key={day.toISOString()}>
-                                        <DayColumn day={day} shifts={shifts} />
+                                {/* DAY COLUMNS */}
+                                {days.map(day => {
+                                    const dateKey = day.toISOString().slice(0, 10);
 
-                                        {/* DAILY SHIFT BLOCK */}
-                                        {dailyShift
-                                            .filter((ds) => ds.shift_date === day.toISOString().slice(0, 10))
-                                            .flatMap((ds) => dailyShiftSegments(ds))
-                                            .map((seg, idx) => (
-                                                <div
-                                                    key={`ds-${idx}`}
-                                                    className="shift-block bg-info bg-opacity-25 rounded p-2"
-                                                    style={{
-                                                        top: getPosition(seg.item.shift_start_time),
-                                                        height:
-                                                            getPosition(seg.item.shift_end_time) -
-                                                            getPosition(seg.item.shift_start_time),
-                                                        zIndex: 1,
-                                                        position: "absolute",
-                                                        fontSize: "0.75rem"
-                                                    }}
-                                                >
-                                                    <div className="fw-bold text-primary">Daily Shift</div>
-                                                    <div className="text-dark">
-                                                        {seg.item.shift_start_time.slice(11, 16)} - {seg.item.shift_end_time.slice(11, 16)}
-                                                    </div>
-                                                </div>
+                                    return (
+                                        <div className="day-col" key={dateKey}>
+                                            {/* THIS IS THE CRITICAL CONTAINER */}
+                                            <div className="day-grid">
 
-                                            ))}
-                                    </div>
-                                ))}
+                                                {/* NORMAL SHIFTS */}
+                                                <DayColumn day={day} shifts={shifts} />
+
+                                                {/* DAILY SHIFTS */}
+                                                {dailyShift
+                                                    .filter(ds => ds.shift_date === dateKey)
+                                                    .map(ds => {
+                                                        const top = getPosition(ds.shift_start_time);
+                                                        const height =
+                                                            getPosition(ds.shift_end_time) - top;
+
+                                                        return (
+                                                            <div
+                                                                key={`daily-${ds.shift_id}`}
+                                                                className="shift-block daily-shift"
+                                                                style={{ top, height }}
+                                                            >
+                                                                <strong>Daily Shift</strong>
+                                                                <div>
+                                                                    {ds.shift_start_time.slice(11, 16)} –{" "}
+                                                                    {ds.shift_end_time.slice(11, 16)}
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
                             </div>
                         </div>
+
+
                     </div>
                 )}
                 {showtab.overview && (

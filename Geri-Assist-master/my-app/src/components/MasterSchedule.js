@@ -5,7 +5,7 @@ import { fetchServiceSchedule } from "../services/api";
 import ShiftEditModal from "./ShiftEditModal";
 
 export default function MasterSchedule() {
-    const [service, setService] = useState("87 Neeve");
+    const [service, setService] = useState("85 Neeve");
 
     // ✅ data must be an object, not an array
     const [data, setData] = useState({
@@ -14,6 +14,7 @@ export default function MasterSchedule() {
     });
 
     const [selectedShift, setSelectedShift] = useState(null);
+    const [selectedId, setSelectedId] = useState(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
 
     useEffect(() => {
@@ -29,9 +30,10 @@ export default function MasterSchedule() {
             .catch(err => console.error("FETCH ERROR:", err));
     }, [service]);
 
-    const handleShiftClick = (shift) => {
+    const handleShiftClick = (shift, emp_id) => {
         // console.log("Shift clicked:", shift);
         setSelectedShift(shift);
+        setSelectedId(emp_id);
         setIsModalOpen(true);
     };
 
@@ -95,6 +97,7 @@ export default function MasterSchedule() {
                 isOpen={isModalOpen}
                 onClose={() => setIsModalOpen(false)}
                 shift={selectedShift}
+                emp_id={selectedId}
                 onSave={handleShiftSave}
             />
         </div>
