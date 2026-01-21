@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: gerri-backend
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn schedule:app --bind 0.0.0.0:$PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11"
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false

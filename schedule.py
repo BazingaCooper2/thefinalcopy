@@ -5,7 +5,10 @@ from flask_cors import CORS
 from datetime import timedelta, datetime
 from datetime import date
 import os
+from dotenv import load_dotenv
 import smtplib
+
+load_dotenv()
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import calendar
@@ -19,13 +22,12 @@ active_connections = {}  # emp_id -> WebSocket
 
 
 app = Flask(__name__)
-app.secret_key = 'seckey257'
+app.secret_key = os.getenv('SECRET_KEY', 'seckey257')
 CORS(app)
 
-# Replace with your values
-url = "https://asbfhxdomvclwsrekdxi.supabase.co"
-# key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFzYmZoeGRvbXZjbHdzcmVrZHhpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQzMjI3OTUsImV4cCI6MjA2OTg5ODc5NX0.0VzbWIc-uxIDhI03g04n8HSPRQ_p01UTJQ1sg8ggigU"
-key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFzYmZoeGRvbXZjbHdzcmVrZHhpIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NDMyMjc5NSwiZXhwIjoyMDY5ODk4Nzk1fQ.iPXQg3KBXGXNlJwMzv5Novm0Qnc7Y5sPNE4RYxg3wqI"
+# Supabase config from environment variables
+url = os.getenv('SUPABASE_URL', 'https://asbfhxdomvclwsrekdxi.supabase.co')
+key = os.getenv('SUPABASE_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFzYmZoeGRvbXZjbHdzcmVrZHhpIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NDMyMjc5NSwiZXhwIjoyMDY5ODk4Nzk1fQ.iPXQg3KBXGXNlJwMzv5Novm0Qnc7Y5sPNE4RYxg3wqI')
 supabase: Client = create_client(url, key)
 
 @app.route('/dashboard/stats', methods=['GET'])
@@ -1673,5 +1675,6 @@ def get_shift_offers():
 
 # --- Run ---
 if __name__ == '__main__':
-    app.run(debug=True)
+    port = int(os.getenv('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=False)
 
