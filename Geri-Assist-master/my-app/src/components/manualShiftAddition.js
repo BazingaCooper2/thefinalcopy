@@ -14,7 +14,7 @@ const AddShift = () => {
         shift_date: new Date().toISOString().slice(0, 10),
         shift_start_time: "09:00",
         shift_end_time: "17:00",
-        shift_type: "s1",
+        shift_type: "flw_rtw",
         status:"Scheduled",
     });
 
@@ -22,11 +22,11 @@ const AddShift = () => {
     useEffect(() => {
         fetch("http://127.0.0.1:5000/employees")
             .then((res) => res.json())
-            .then((data) => setEmployees(data.employee || []));
+            .then((data) => setEmployees(data || []));
 
         fetch("http://127.0.0.1:5000/clients")
             .then((res) => res.json())
-            .then((data) => setClients(data.client || []));
+            .then((data) => setClients(data.clients || []));
     }, []);
 
     const handleChange = (e) => {
@@ -166,13 +166,17 @@ const AddShift = () => {
                                     {/* Shift Type */}
                                     <div className="mb-3">
                                         <label className="form-label fw-bold">Shift Type</label>
-                                        <input
+                                        <select
                                             name="text"
                                             className="form-select"
                                             value={formData.shift_type}
                                             onChange={handleChange}
                                         >
-                                        </input>
+                                            <option value="flw-rtw">FLW Return to Work</option>
+                                            <option value="flw-training">FLW Training</option>
+                                            <option value="gil-training">GIL Training</option>
+
+                                        </select>
                                     </div>
                             </>
                         )}
