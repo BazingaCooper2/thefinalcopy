@@ -74,7 +74,7 @@ export function useAuth() {
 function ProtectedRoute({ children, supervisorOnly = false }) {
     const { user, isAuthenticated } = useAuth();
     console.log(user);
-    const isSupervisor = user?.emp_role === 'SUPERVISOR' || user?.emp_role === 'MANAGER' || user?.emp_role === 'ADMIN';
+    const isSupervisor = user?.emp_role === 'Supervisor' || user?.emp_role === 'MANAGER' || user?.emp_role === 'ADMIN';
 
     if (!isAuthenticated) return <Navigate to="/login" replace />;
     if (supervisorOnly && !isSupervisor) return <Navigate to="/" replace />;
