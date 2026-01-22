@@ -10,14 +10,14 @@ export default function ClockIn() {
     const [loading, setLoading] = useState(true);
     const [taskBusy, setTaskBusy] = useState({});
 
+    useEffect(() => {
+        init();
+    }, []);
     const empId = getEmpId();
     if (!empId) return null;
 
 
     // 🔁 Restore state on refresh
-    useEffect(() => {
-        init();
-    }, []);
 
     async function init() {
         try {
