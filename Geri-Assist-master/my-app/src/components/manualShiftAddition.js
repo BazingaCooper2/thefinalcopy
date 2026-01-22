@@ -1,5 +1,6 @@
 ﻿import React, { useState, useEffect } from "react";
 import "bootstrap/dist/css/bootstrap.min.css";
+import API_URL from '../config/api';
 
 const AddShift = () => {
     const [mode, setMode] = useState("client"); // "client" or "employee"
@@ -20,11 +21,11 @@ const AddShift = () => {
 
     // Fetch employee + client list
     useEffect(() => {
-        fetch("http://127.0.0.1:5000/employees")
+        fetch(`${API_URL}/employees`)
             .then((res) => res.json())
             .then((data) => setEmployees(data || []));
 
-        fetch("http://127.0.0.1:5000/clients")
+        fetch(`${API_URL}/clients`)
             .then((res) => res.json())
             .then((data) => setClients(data.clients || []));
     }, []);
@@ -39,8 +40,8 @@ const AddShift = () => {
 
         const url =
             mode === "client"
-                ? "http://127.0.0.1:5000/add_client_shift"
-                : "http://127.0.0.1:5000/add_employee_shift";
+                ? `${API_URL}/add_client_shift`
+                : `${API_URL}/add_employee_shift`;
 
         const payload =
             mode === "client"

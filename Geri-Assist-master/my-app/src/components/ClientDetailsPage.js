@@ -619,6 +619,7 @@
 
 import React, { useEffect, useState } from "react";
 import axios from "axios";
+import API_URL from '../config/api';
 
 export default function ClientDetailsPage() {
   // --- State: Data & UI ---
@@ -642,7 +643,7 @@ export default function ClientDetailsPage() {
   const fetchClients = async () => {
     try {
       // Adjusted to handle response structure from both examples (data.clients or data.client)
-      const response = await axios.get("http://127.0.0.1:5000/clients");
+      const response = await axios.get(`${API_URL}/clients`);
       const clientList = response.data.clients || response.data.client || [];
       setClients(clientList);
 
@@ -692,7 +693,7 @@ export default function ClientDetailsPage() {
 
   const saveClient = async () => {
     try {
-      const response = await fetch(`http://127.0.0.1:5000/clients/${editForm.client_id}`, {
+      const response = await fetch(`${API_URL}/clients/${editForm.client_id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(editForm)

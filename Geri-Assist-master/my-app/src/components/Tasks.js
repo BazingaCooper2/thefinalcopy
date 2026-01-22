@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import API_URL from '../config/api';
 
 export default function Tasks() {
     const [shifts, setShifts] = useState([]);
@@ -13,7 +14,7 @@ export default function Tasks() {
         async function fetchShifts() {
             try {
                 const res = await fetch(
-                    "http://127.0.0.1:5000/shifts-for-tasks"
+                    `${API_URL}/shifts-for-tasks`
                 );
                 const data = await res.json();
 
@@ -47,7 +48,7 @@ export default function Tasks() {
 
         try {
             const res = await fetch(
-                "http://127.0.0.1:5000/task-assign",
+                `${API_URL}/task-assign`,
                 {
                     method: "POST",
                     headers: {

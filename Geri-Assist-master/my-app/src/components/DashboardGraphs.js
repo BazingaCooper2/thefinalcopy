@@ -1,5 +1,6 @@
 import React from 'react';
 import { useEffect, useState } from 'react';
+import API_URL from '../config/api';
 import {
     LineChart,
     Line,
@@ -22,7 +23,7 @@ export default function DashboardGraphs() {
     const [statusData, setStatusData] = useState([]);
     useEffect(() => {
         // Clock timeline + pie
-        fetch('http://localhost:5000/dashboard/clock-stats')
+        fetch(`${API_URL}/dashboard/clock-stats`)
             .then(res => res.json())
             .then(data => {
                 setClockData(data.timeline);
@@ -34,7 +35,7 @@ export default function DashboardGraphs() {
             });
     
         // Employee status pie
-        fetch('http://localhost:5000/dashboard/employee-status')
+        fetch(`${API_URL}/dashboard/employee-status`)
             .then(res => res.json())
             .then(data => {
                 setStatusData(data);

@@ -441,7 +441,7 @@ function LeaveRequestModal({ employee, employees, onClose }) {
                 end_time: formData.all_day ? "23:59:00" : formData.end_time
             };
 
-            const response = await fetch("http://127.0.0.1:5000/add_unavailability", {
+            const response = await fetch(`${API_URL}/add_unavailability`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(body),
