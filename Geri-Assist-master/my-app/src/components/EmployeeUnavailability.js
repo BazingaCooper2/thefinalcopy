@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import "../../node_modules/bootstrap-icons/font/bootstrap-icons.css";
-import API_URL from '../config/api';
+import "bootstrap/dist/js/bootstrap.bundle.min.js";
 
 
 const EmployeeUnavailability = ({ emp }) => {
@@ -24,7 +24,7 @@ const EmployeeUnavailability = ({ emp }) => {
 
     // Fetch unavailability from backend
     useEffect(() => {
-        fetch(`${API_URL}/unavailability/${emp.emp_id}`)
+        fetch(`http://127.0.0.1:5000/unavailability/${emp.emp_id}`)
             .then((res) => res.json())
             .then((data) => {
                 setUnavailability(data.unavailability || []);
@@ -39,7 +39,7 @@ const EmployeeUnavailability = ({ emp }) => {
 
     // Add new unavailability
     const handleSave = async () => {
-        const response = await fetch(`${API_URL}/add_unavailability`, {
+        const response = await fetch("http://127.0.0.1:5000/add_unavailability", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -55,7 +55,7 @@ const EmployeeUnavailability = ({ emp }) => {
             setForm({ type: "", start_date: "", end_date: "", start_time: "", end_time: "", description: "" });
 
             // refresh table
-            const res = await fetch(`${API_URL}/unavailability/${emp.emp_id}`);
+            const res = await fetch(`http://127.0.0.1:5000/unavailability/${emp.emp_id}`);
             const data = await res.json();
             setUnavailability(data.unavailability || []);
         }
@@ -67,10 +67,16 @@ const EmployeeUnavailability = ({ emp }) => {
     };
 
     const handleDelete = async (leave_id) => {
+        console.log("Deleting leave_id:", leave_id);
+        if (!leave_id) {
+            alert("Error: Invalid leave ID");
+            return;
+        }
+
         if (!window.confirm("Are you sure you want to delete this entry?")) return;
 
         try {
-            const res = await fetch(`${API_URL}/delete_unavailability/${leave_id}`, {
+            const res = await fetch(`http://127.0.0.1:5000/delete_unavailability/${leave_id}`, {
                 method: "DELETE"
             });
 
@@ -79,17 +85,19 @@ const EmployeeUnavailability = ({ emp }) => {
                 // remove from UI without refresh
                 setUnavailability(prev => prev.filter(u => u.leave_id !== leave_id));
             } else {
-                alert("Failed to delete");
+                const errData = await res.json();
+                alert("Failed to delete: " + (errData.error || "Unknown error"));
             }
         } catch (err) {
             console.error(err);
+            alert("Error deleting: " + err.message);
         }
     };
 
     const handleUpdate = async () => {
         try {
             const res = await fetch(
-                `${API_URL}/update_unavailability/${editing.leave_id}`,
+                `http://127.0.0.1:5000/update_unavailability/${editing.leave_id}`,
                 {
                     method: "PUT",
                     headers: { "Content-Type": "application/json" },
@@ -215,12 +223,12 @@ const EmployeeUnavailability = ({ emp }) => {
 
                                     <td className="text-end">
                                         <div className="dropdown">
-                                            <button class="btn btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                            <button className="btn btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
                                                 Action
                                             </button>
-                                            <ul class="dropdown-menu">
-                                                <li><button class="dropdown-item" onClick={() => handleEdit(u)}>Edit</button></li>
-                                                <li><button class="dropdown-item" onClick={() => handleDelete(u.leave_id)}>Delete</button></li>
+                                            <ul className="dropdown-menu">
+                                                <li><button className="dropdown-item" onClick={() => handleEdit(u)}>Edit</button></li>
+                                                <li><button className="dropdown-item" onClick={() => handleDelete(u.leave_id)}>Delete</button></li>
                                             </ul>
                                         </div>
                                     </td>

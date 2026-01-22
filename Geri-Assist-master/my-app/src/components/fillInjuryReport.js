@@ -85,10 +85,10 @@ const UnifiedReportForm = () => {
 const HazardForm = ({ onSubmit, loading }) => {
   const [data, setData] = useState({
     // Part 1
-    reporter_name: "", phone: "", work_location: "", supervisor_notified: "",
-    date_reported: "", time_reported: "",
-    date_of_incident: "", time_of_incident: "",
-    on_hazard_board: "No", delay_reason: "",
+    reporter_name: "", phone: "", incident_location: "", supervisor_notified: "",
+    reported_date: "", reported_time: "",
+    incident_date: "", incident_time: "",
+    document_on_hazard_board: "No", delay_reason: "",
     // Part 2
     workers_involved: "", clients_involved: "", others_involved: "",
     // Part 3
@@ -97,7 +97,7 @@ const HazardForm = ({ onSubmit, loading }) => {
     hazards: [],
     // Part 5
     hazard_details: "",
-    conversations_and_actions: "", // "conversations with person(s) involved and any actions taken"
+    immediate_action: "", // "conversations with person(s) involved and any actions taken"
     confirmation_signed: false, // "I confirm the information..."
     // Part 6
     witness_name: "", witness_statement: "", witness_date: "", witness_time: "", witness_signature: "",
@@ -271,7 +271,7 @@ const SignaturePad = ({ label, onEnd }) => {
 // --- 2. HAZARD REPORT FOLLOW-UP (Supervisor/Manager/JHSC) ---
 const HazardFollowupForm = ({ onSubmit, loading }) => {
   const [data, setData] = useState({
-    supervisor_rec: "", supervisor_signature: "", supervisor_sign_date: "", supervisor_sign_time: "",
+    hazard_id:0, supervisor_rec: "", supervisor_signature: "", supervisor_sign_date: "", supervisor_sign_time: "",
     manager_followup: "", manager_signature: "", manager_sign_date: "",
     jhsc_rec: "", worker_co_chair_signature: "", worker_co_chair_date: "", management_co_chair_signature: "", management_co_chair_date: ""
   });
@@ -291,7 +291,11 @@ const HazardFollowupForm = ({ onSubmit, loading }) => {
       <h4 className="mb-3 text-warning fw-bold border-bottom pb-2">HAZARD REPORT FOLLOW-UP</h4>
       <div className="alert alert-info small">
         <strong>Note:</strong> This form is for supervisor, program manager, and JHSC follow-up on hazard reports.
-      </div>
+       </div>
+    <div className="mb-3">
+        <label className="form-label">Hazard id:</label>
+        <input name="hazard_id" className="form-control" rows="4" onChange={handleChange}></input>
+    </div>
 
       {/* --- SUPERVISOR ACTION --- */}
       <h5 className="bg-secondary text-white p-2 border rounded mt-4">Action taken by supervisor/coordinator (Hazard Report)</h5>
@@ -349,7 +353,7 @@ const IncidentForm = ({ onSubmit, loading }) => {
     workers: "", clients: "", others: "",
     witness_name: "", witness_job_title: "", witness_contact: "",
     // Part 3
-    date_of_incident: "", time_of_incident: "", location: "",
+    incident_date: "", incident_time: "", inclident_location: "",
     incident_description: "", // "What was the incident?"
     who_involved: "", // "Who is involved in the incident?"
     who_reported: "", // "Who reported the incident?"
@@ -361,7 +365,7 @@ const IncidentForm = ({ onSubmit, loading }) => {
     injuries: "", // "Did anyone get hurt..."
     environmental_hazards: "", // "Were there environmental hazards..."
     immediate_actions: "", // "What actions did you take immediately..."
-    who_informed: "", // "Who was informed..."
+    who_was_informed: "", // "Who was informed..."
     worker_name_bottom: "", date_of_incident_bottom: "", client_name_bottom: "", time_of_incident_bottom: "" // Repeated fields at bottom of Part 3
   });
 
@@ -429,9 +433,9 @@ const IncidentForm = ({ onSubmit, loading }) => {
         Please state what you personally observed. Report factual information only. Do not write down personal opinions.
       </div>
       <div className="row g-3 mb-3">
-        <div className="col-md-6"><label className="form-label">Date of Incident</label><input type="date" name="date_of_incident" className="form-control" onChange={handleChange} /></div>
-        <div className="col-md-6"><label className="form-label">Time</label><input type="time" name="time_of_incident" className="form-control" onChange={handleChange} /></div>
-        <div className="col-12"><label className="form-label">Location</label><input name="location" className="form-control" onChange={handleChange} /></div>
+        <div className="col-md-6"><label className="form-label">Date of Incident</label><input type="date" name="incident_date" className="form-control" onChange={handleChange} /></div>
+        <div className="col-md-6"><label className="form-label">Time</label><input type="time" name="incident_time" className="form-control" onChange={handleChange} /></div>
+        <div className="col-12"><label className="form-label">Location</label><input name="incident_location" className="form-control" onChange={handleChange} /></div>
       </div>
 
       <div className="table-responsive">
@@ -448,7 +452,7 @@ const IncidentForm = ({ onSubmit, loading }) => {
             <tr><td className="bg-light">Did anyone get hurt or require medical attention?</td><td><textarea name="injuries" className="form-control border-0" rows="2" onChange={handleChange}></textarea></td></tr>
             <tr><td className="bg-light">Were there environmental hazards present?</td><td><textarea name="environmental_hazards" className="form-control border-0" rows="2" onChange={handleChange}></textarea></td></tr>
             <tr><td className="bg-light">What actions did you take immediately after the incident?</td><td><textarea name="immediate_actions" className="form-control border-0" rows="2" onChange={handleChange}></textarea></td></tr>
-            <tr><td className="bg-light">Who was informed (supervisor, nurse, family)?</td><td><textarea name="who_informed" className="form-control border-0" rows="2" onChange={handleChange}></textarea></td></tr>
+            <tr><td className="bg-light">Who was informed (supervisor, nurse, family)?</td><td><textarea name="who_was_informed" className="form-control border-0" rows="2" onChange={handleChange}></textarea></td></tr>
           </tbody>
         </table>
       </div>
@@ -467,7 +471,8 @@ const IncidentForm = ({ onSubmit, loading }) => {
 // --- 3. INCIDENT REPORT FOLLOW-UP (Supervisor/Manager) ---
 const IncidentFollowupForm = ({ onSubmit, loading }) => {
   const [data, setData] = useState({
-    // Part 4 Supervisor
+      // Part 4 Supervisor
+    incident_id:0,
     reported_to_supervisor_by: "", reported_to_supervisor_time: "",
     supervisor_witness_statement: "", // "What did the worker/client/witness state?"
     reporting_delays: "", // "Were there any delays..."
@@ -499,7 +504,7 @@ const IncidentFollowupForm = ({ onSubmit, loading }) => {
       <div className="alert alert-info small">
         <strong>Note:</strong> This form is for supervisor and program manager follow-up on incident reports.
       </div>
-
+      <div className="col-md-6"><label className="form-label">Incident ID</label><input required name="incident_id" className="form-control" onChange={handleChange} /></div>
       {/* Part 4 Supervisor */}
       <h5 className="bg-secondary text-white p-2 border rounded mt-4">Action taken by supervisor/coordinator (Incident Report)</h5>
       <div className="table-responsive">
@@ -728,8 +733,9 @@ const InjuryForm = ({ onSubmit, loading }) => {
 // --- 5. INJURY REPORT FOLLOW-UP (Supervisor/Manager) ---
 const InjuryFollowupForm = ({ onSubmit, loading }) => {
   const [data, setData] = useState({
-    // Part 8
-    rtw_process_initiated: "No", investigation_initiated: "No", copy_provided_to_hr: "No",
+      // Part 8
+    injury_report_id:0,
+    rtw_initiated: "No", investigation_started: "No", copy_provided_to_hr: "No",
     supervisor_steps_resolve: "",
     supervisor_signature: "", supervisor_sign_date: "", supervisor_sign_time: "",
     // Part 9
@@ -753,19 +759,19 @@ const InjuryFollowupForm = ({ onSubmit, loading }) => {
       <div className="alert alert-danger small">
         <strong>Note:</strong> This form is for supervisor and program manager follow-up on employee injury/illness reports.
       </div>
-
+          <div className="col-md-6"><label className="form-label">Injury Report ID</label><input required name="injury_report_id" className="form-control" onChange={handleChange} /></div>
       {/* Part 8 Supervisor Action */}
       <h5 className="bg-secondary text-white p-2 border rounded mt-4">Action taken by supervisor/coordinator (Injury Report)</h5>
       <div className="row g-3">
         <div className="col-12">
           <span className="fw-bold me-3">Return to Work (RTW) Process initiated?</span>
-          <div className="form-check form-check-inline"><input className="form-check-input" type="radio" name="rtw_process_initiated" value="Yes" onChange={handleChange} /> Yes</div>
-          <div className="form-check form-check-inline"><input className="form-check-input" type="radio" name="rtw_process_initiated" value="No" defaultChecked onChange={handleChange} /> No</div>
+          <div className="form-check form-check-inline"><input className="form-check-input" type="radio" name="rtw_initiated" value="Yes" onChange={handleChange} /> Yes</div>
+          <div className="form-check form-check-inline"><input className="form-check-input" type="radio" name="rtw_initiated" value="No" defaultChecked onChange={handleChange} /> No</div>
         </div>
         <div className="col-12">
           <span className="fw-bold me-3">Was an Incident/Injury Investigation Form initiated?</span>
-          <div className="form-check form-check-inline"><input className="form-check-input" type="radio" name="investigation_initiated" value="Yes" onChange={handleChange} /> Yes</div>
-          <div className="form-check form-check-inline"><input className="form-check-input" type="radio" name="investigation_initiated" value="No" defaultChecked onChange={handleChange} /> No</div>
+          <div className="form-check form-check-inline"><input className="form-check-input" type="radio" name="investigation_started" value="Yes" onChange={handleChange} /> Yes</div>
+          <div className="form-check form-check-inline"><input className="form-check-input" type="radio" name="investigation_started" value="No" defaultChecked onChange={handleChange} /> No</div>
         </div>
         <div className="col-12">
           <span className="fw-bold me-3">If RTW Process was initiated, was a copy of this Illness/Injury Report provided to HR?</span>
