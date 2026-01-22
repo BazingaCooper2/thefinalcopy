@@ -357,6 +357,7 @@ const EmployeeDetails = () => {
             {showLeaveModal && (
                 <LeaveRequestModal
                     employee={selectedEmployee}
+                    employees={employees}
                     onClose={() => setShowLeaveModal(false)}
                 />
             )}
@@ -365,21 +366,96 @@ const EmployeeDetails = () => {
 };
 
 // Leave Request Modal Component
-function LeaveRequestModal({ employee, onClose }) {
+function LeaveRequestModal({ employee, employees, onClose }) {
     const [formData, setFormData] = useState({
-        leaveType: 'Sick Leave',
-        startDate: '',
-        endDate: '',
-        reason: '',
+        emp_id: employee?.emp_id || "",
+        type: "",
+        start_date: "",
+        end_date: "",
+        all_day: false,
+        frequency_type: "none",
+        repeat_every: "",
+        start_time: "",
+        end_time: "",
+        description: "",
         notifySupervisor: true
     });
 
-    const handleSubmit = (e) => {
+    const [open, setOpen] = useState(false);
+    const [filter, setFilter] = useState("");
+
+    const UNAVAILABILITY_TYPES = [
+        "Unavailability",
+        "Vacation FT Hourly - pay only",
+        "Float Day",
+        "Sick paid",
+        "Sick unpaid",
+        "Vacation PT and Casual - Seniority only",
+        "Lieu day for Stat worked (unpaid)",
+        "Unpaid leave + no seniority",
+        "ESA leave + seniority",
+        "Moved",
+        "WSIB Leave (with seniority)",
+        "Union",
+        "Domestic Violence Leave",
+        "Bereavement paid",
+        "Bereavement unpaid",
+        "Jury Duty",
+        "Vacation FT - seniority only",
+        "JHSC",
+        "Unavailable - First Aid CPR",
+        "No Show",
+        "Maternity/Paternity Leave"
+    ];
+
+    const filteredTypes = UNAVAILABILITY_TYPES.filter(t =>
+        t.toLowerCase().includes(filter.toLowerCase())
+    );
+
+    const handleChange = (e) => {
+        const { name, value, type, checked } = e.target;
+        setFormData(prev => ({
+            ...prev,
+            [name]: type === 'checkbox' ? checked : value
+        }));
+    };
+
+    const handleSubmit = async (e) => {
         e.preventDefault();
-        // Here you would send the leave request to the backend
-        console.log('Leave request submitted:', formData);
-        alert('Leave request submitted successfully! Notification sent to supervisor.');
-        onClose();
+
+        if (!formData.emp_id) {
+            alert("Please select an employee");
+            return;
+        }
+
+        if (!formData.type) {
+            alert("Please select a leave type");
+            return;
+        }
+
+        try {
+            const body = {
+                ...formData, // includes emp_id
+                start_time: formData.all_day ? "00:00:00" : formData.start_time,
+                end_time: formData.all_day ? "23:59:00" : formData.end_time
+            };
+
+            const response = await fetch("http://127.0.0.1:5000/add_unavailability", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body),
+            });
+
+            if (response.ok) {
+                alert('Leave request submitted successfully!');
+                onClose();
+            } else {
+                alert('Failed to submit leave request');
+            }
+        } catch (error) {
+            console.error("Error submitting request:", error);
+            alert("An error occurred while submitting the request");
+        }
     };
 
     return (
@@ -392,13 +468,33 @@ function LeaveRequestModal({ employee, onClose }) {
 
                 <div className="d-flex justify-content-between align-items-center mb-4">
                     <h4 className="m-0">
-                        <i className="bi bi-calendar-x me-2" style={{ color: 'var(--primary-purple)' }}></i>
-                        Request Leave
+                        <i className="bi bi-calendar-plus me-2" style={{ color: 'var(--primary-purple)' }}></i>
+                        Add Unavailability / Leave
                     </h4>
                     <button onClick={onClose} className="btn btn-sm" style={{ color: 'var(--gray-400)' }}>
                         <i className="bi bi-x-lg fs-5"></i>
                     </button>
                 </div>
+
+                {!employee && employees && (
+                    <div className="input-group-modern mb-3">
+                        <label className="input-label-modern">Select Employee</label>
+                        <select
+                            className="input-modern"
+                            name="emp_id"
+                            value={formData.emp_id}
+                            onChange={handleChange}
+                            required
+                        >
+                            <option value="">-- Choose Employee --</option>
+                            {employees.map(emp => (
+                                <option key={emp.emp_id} value={emp.emp_id}>
+                                    {emp.first_name} {emp.last_name} (#{emp.emp_id})
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                )}
 
                 {employee && (
                     <div className="p-3 rounded mb-4" style={{ background: 'var(--gray-50)', border: '1px solid var(--gray-200)' }}>
@@ -416,19 +512,38 @@ function LeaveRequestModal({ employee, onClose }) {
                 )}
 
                 <form onSubmit={handleSubmit}>
-                    <div className="input-group-modern">
-                        <label className="input-label-modern">Leave Type</label>
-                        <select
+                    <div className="input-group-modern position-relative">
+                        <label className="input-label-modern">Type</label>
+                        <input
+                            type="text"
                             className="input-modern"
-                            value={formData.leaveType}
-                            onChange={(e) => setFormData({ ...formData, leaveType: e.target.value })}
-                            required
-                        >
-                            <option>Sick Leave</option>
-                            <option>Vacation</option>
-                            <option>Personal Day</option>
-                            <option>Unpaid Leave</option>
-                        </select>
+                            placeholder="Search or select type..."
+                            name="type"
+                            value={open ? filter : formData.type}
+                            onFocus={() => setOpen(true)}
+                            onChange={(e) => {
+                                setFilter(e.target.value);
+                                handleChange(e);
+                                setOpen(true);
+                            }}
+                            autoComplete="off"
+                        />
+                        {open && (
+                            <ul className="list-group position-absolute w-100 shadow-sm" style={{ zIndex: 10, maxHeight: '200px', overflowY: 'auto', top: '100%' }}>
+                                {filteredTypes.map((t, idx) => (
+                                    <li key={idx}
+                                        className="list-group-item list-group-item-action"
+                                        style={{ cursor: 'pointer' }}
+                                        onClick={() => {
+                                            setFormData(prev => ({ ...prev, type: t }));
+                                            setFilter("");
+                                            setOpen(false);
+                                        }}>
+                                        {t}
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
                     </div>
 
                     <div className="row g-3">
@@ -438,8 +553,9 @@ function LeaveRequestModal({ employee, onClose }) {
                                 <input
                                     type="date"
                                     className="input-modern"
-                                    value={formData.startDate}
-                                    onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
+                                    name="start_date"
+                                    value={formData.start_date}
+                                    onChange={handleChange}
                                     required
                                 />
                             </div>
@@ -450,23 +566,103 @@ function LeaveRequestModal({ employee, onClose }) {
                                 <input
                                     type="date"
                                     className="input-modern"
-                                    value={formData.endDate}
-                                    onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
+                                    name="end_date"
+                                    value={formData.end_date}
+                                    onChange={handleChange}
                                     required
                                 />
                             </div>
                         </div>
                     </div>
 
+                    <div className="form-check mb-3">
+                        <input
+                            className="form-check-input"
+                            type="checkbox"
+                            id="allDayCheck"
+                            name="all_day"
+                            checked={formData.all_day}
+                            onChange={(e) => {
+                                handleChange(e);
+                                if (e.target.checked) {
+                                    setFormData(prev => ({ ...prev, start_time: "", end_time: "" }));
+                                }
+                            }}
+                        />
+                        <label className="form-check-label" htmlFor="allDayCheck">
+                            All Day
+                        </label>
+                    </div>
+
+                    {!formData.all_day && (
+                        <div className="row g-3 mb-3">
+                            <div className="col-md-6">
+                                <div className="input-group-modern">
+                                    <label className="input-label-modern">Start Time</label>
+                                    <input
+                                        type="time"
+                                        className="input-modern"
+                                        name="start_time"
+                                        value={formData.start_time}
+                                        onChange={handleChange}
+                                    />
+                                </div>
+                            </div>
+                            <div className="col-md-6">
+                                <div className="input-group-modern">
+                                    <label className="input-label-modern">End Time</label>
+                                    <input
+                                        type="time"
+                                        className="input-modern"
+                                        name="end_time"
+                                        value={formData.end_time}
+                                        onChange={handleChange}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     <div className="input-group-modern">
-                        <label className="input-label-modern">Reason</label>
+                        <label className="input-label-modern">Frequency</label>
+                        <select
+                            className="input-modern"
+                            name="frequency_type"
+                            value={formData.frequency_type}
+                            onChange={handleChange}
+                        >
+                            <option value="none">Does not repeat</option>
+                            <option value="daily">Daily</option>
+                            <option value="weekly">Weekly</option>
+                            <option value="monthly">Monthly</option>
+                        </select>
+                    </div>
+
+                    {formData.frequency_type !== "none" && (
+                        <div className="input-group-modern">
+                            <label className="input-label-modern">
+                                Repeat every ({formData.frequency_type === "daily" ? "days" : formData.frequency_type === "weekly" ? "weeks" : "months"})
+                            </label>
+                            <input
+                                type="number"
+                                min="1"
+                                className="input-modern"
+                                name="repeat_every"
+                                value={formData.repeat_every}
+                                onChange={handleChange}
+                            />
+                        </div>
+                    )}
+
+                    <div className="input-group-modern">
+                        <label className="input-label-modern">Description / Reason</label>
                         <textarea
                             className="input-modern"
-                            rows="4"
-                            placeholder="Please provide a brief reason for your leave request..."
-                            value={formData.reason}
-                            onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
-                            required
+                            rows="3"
+                            placeholder="Additional details..."
+                            name="description"
+                            value={formData.description}
+                            onChange={handleChange}
                         />
                     </div>
 
@@ -475,18 +671,19 @@ function LeaveRequestModal({ employee, onClose }) {
                             className="form-check-input"
                             type="checkbox"
                             id="notifySupervisor"
+                            name="notifySupervisor"
                             checked={formData.notifySupervisor}
-                            onChange={(e) => setFormData({ ...formData, notifySupervisor: e.target.checked })}
+                            onChange={handleChange}
                         />
                         <label className="form-check-label" htmlFor="notifySupervisor">
-                            Send email notification to supervisor and common mail ID
+                            Send email notification
                         </label>
                     </div>
 
                     <div className="d-flex gap-2">
                         <button type="submit" className="btn-modern btn-primary flex-grow-1">
                             <i className="bi bi-send me-2"></i>
-                            Submit Request
+                            Submit
                         </button>
                         <button type="button" onClick={onClose} className="btn-modern btn-outline">
                             Cancel

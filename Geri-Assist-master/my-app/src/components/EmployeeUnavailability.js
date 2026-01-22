@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import "../../node_modules/bootstrap-icons/font/bootstrap-icons.css";
+import "bootstrap/dist/js/bootstrap.bundle.min.js";
 
 
 const EmployeeUnavailability = ({ emp }) => {
@@ -66,6 +67,12 @@ const EmployeeUnavailability = ({ emp }) => {
     };
 
     const handleDelete = async (leave_id) => {
+        console.log("Deleting leave_id:", leave_id);
+        if (!leave_id) {
+            alert("Error: Invalid leave ID");
+            return;
+        }
+
         if (!window.confirm("Are you sure you want to delete this entry?")) return;
 
         try {
@@ -78,10 +85,12 @@ const EmployeeUnavailability = ({ emp }) => {
                 // remove from UI without refresh
                 setUnavailability(prev => prev.filter(u => u.leave_id !== leave_id));
             } else {
-                alert("Failed to delete");
+                const errData = await res.json();
+                alert("Failed to delete: " + (errData.error || "Unknown error"));
             }
         } catch (err) {
             console.error(err);
+            alert("Error deleting: " + err.message);
         }
     };
 
@@ -214,12 +223,12 @@ const EmployeeUnavailability = ({ emp }) => {
 
                                     <td className="text-end">
                                         <div className="dropdown">
-                                            <button class="btn btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                            <button className="btn btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
                                                 Action
                                             </button>
-                                            <ul class="dropdown-menu">
-                                                <li><button class="dropdown-item" onClick={() => handleEdit(u)}>Edit</button></li>
-                                                <li><button class="dropdown-item" onClick={() => handleDelete(u.leave_id)}>Delete</button></li>
+                                            <ul className="dropdown-menu">
+                                                <li><button className="dropdown-item" onClick={() => handleEdit(u)}>Edit</button></li>
+                                                <li><button className="dropdown-item" onClick={() => handleDelete(u.leave_id)}>Delete</button></li>
                                             </ul>
                                         </div>
                                     </td>

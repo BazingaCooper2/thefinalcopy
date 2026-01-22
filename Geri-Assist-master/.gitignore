@@ -30,7 +30,8 @@ wheels/
 *.egg
 
 # Firebase credentials
-*.json
+# *.json
+
 
 # Node
 node_modules/

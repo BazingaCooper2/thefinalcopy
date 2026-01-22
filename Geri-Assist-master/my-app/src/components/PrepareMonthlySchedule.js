@@ -22,7 +22,7 @@ function GenerateShifts({ empId }) {
                 const clientData = await clientRes.json();
 
                 setEmployees(empData || []);
-                setClients(clientData.clients || []);
+                setClients(clientData.client || []);
             } catch (err) {
                 console.error("Error fetching data:", err);
             } finally {

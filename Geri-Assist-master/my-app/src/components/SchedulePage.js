@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 
 export default function SchedulePage() {
@@ -10,12 +10,11 @@ export default function SchedulePage() {
   const [selectedLocation, setSelectedLocation] = useState('85 Neeve');
   const [timelineDays, setTimelineDays] = useState(14);
 
-    const locations = ['85 Neeve', '87 Neeve', 'Willow Place', 'Outreach', 'Assisted Living', 'Seniors Assisted Living'];
+  const locations = ['85 Neeve', '87 Neeve', 'Willow Place', 'Outreach'];
 
   useEffect(() => {
     fetchScheduleData();
   }, [selectedLocation]); // Re-fetch when location changes
-
 
   const fetchScheduleData = async () => {
     try {
@@ -24,50 +23,14 @@ export default function SchedulePage() {
       const response = await axios.get('http://127.0.0.1:5000/scheduled', {
         params: { service: selectedLocation }
       });
-      setScheduleData(response.data.daily_shift || []);
-        setEmployees(response.data.employee || []);
-        const filteredEmployees = (response.data.employee || []).filter(emp =>
-            isEmployeeEligible(emp, selectedLocation)
-        );
-        setEmployees(filteredEmployees);
+      setScheduleData(response.data.shift || []);
+      setEmployees(response.data.employee || []);
       setLoading(false);
     } catch (error) {
       console.error('Error fetching schedule:', error);
       setLoading(false);
     }
-    };
-    const isEmployeeEligible = (employee, selectedLocation) => {
-        if (!employee?.department || !selectedLocation) return false;
-
-        const department = employee.department;
-        const location = selectedLocation;
-
-        // NV → 85 / 87 Neeve
-        if (department.includes("NV") && (location.includes("85 Neeve") ||
-            location.includes("87 Neeve"))) {
-            return true;
-        }
-
-        // WP → Willow Place
-        if (department.includes("WP") && location.includes("Willow Place")) {
-            return true;
-        }
-
-        if ((department.includes("OR") || department.includes("Outreach")) && location.includes("Outreach")) {
-            return true;
-        }
-
-        // Assisted Living / Supported Living / ALS
-        if (["Assisted Living", "Supported Living", "ALS"].includes(department) && (
-            location.includes("Assisted Living") ||
-            location.includes("Supported Living")
-        )) {
-            return true;
-        }
-
-        return false;
-    };
-
+  };
 
   const getDays = () => {
     const days = [];
@@ -199,12 +162,13 @@ export default function SchedulePage() {
                                 width: '80%',
                                 height: '70%',
                                 backgroundColor: '#ffffff', // White box for shift
+                                border: '1px solid #e5e7eb',
                                 cursor: 'pointer'
                               }}
                               title={shift.shift_start_time}
                             >
                               {/* Simply 'e' or time? User image showed 'e'. Let's show time for utility but keep simplistic look. */}
-                                      {shift.shift_start_time.toString().split(' ')[1]}-{shift.shift_end_time.toString().split(' ')[1]}
+                              {new Date(shift.shift_start_time).getHours()}:{new Date(shift.shift_start_time).getMinutes().toString().padStart(2, '0')}
                             </div>
                           )}
                         </td>
