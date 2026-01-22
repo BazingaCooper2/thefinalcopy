@@ -27,73 +27,73 @@ import ShiftOffers from './components/ShiftOffers';
 const AuthContext = createContext();
 
 function AuthProvider({ children }) {
-    const [user, setUser] = useState(null);
-    const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        try {
-            const token = localStorage.getItem("token");
-            const storedUser = localStorage.getItem("user");
+  useEffect(() => {
+    try {
+      const token = localStorage.getItem("token");
+      const storedUser = localStorage.getItem("user");
 
-            if (token && storedUser) {
-                setUser(JSON.parse(storedUser));
-            } else {
-                setUser(null);
-            }
-        } catch (e) {
-            localStorage.removeItem("token");
-            localStorage.removeItem("user");
-            setUser(null);
-        } finally {
-            setLoading(false);
-        }
-    }, []);
-
-    const login = (token, userData) => {
-        localStorage.setItem("token", token);
-        localStorage.setItem("user", JSON.stringify(userData));
-        setUser(userData);
-    };
-
-    const logout = () => {
-        localStorage.removeItem("token");
-        localStorage.removeItem("user");
+      if (token && storedUser) {
+        setUser(JSON.parse(storedUser));
+      } else {
         setUser(null);
-    };
+      }
+    } catch (e) {
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+      setUser(null);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-    if (loading) return null; 
+  const login = (token, userData) => {
+    localStorage.setItem("token", token);
+    localStorage.setItem("user", JSON.stringify(userData));
+    setUser(userData);
+  };
 
-    const value = { user, login, logout, isAuthenticated: !!user };
+  const logout = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    setUser(null);
+  };
 
-    return (
-        <AuthContext.Provider value={value}>
-            {children}
-        </AuthContext.Provider>
-    );
+  if (loading) return null;
+
+  const value = { user, login, logout, isAuthenticated: !!user };
+
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+    </AuthContext.Provider>
+  );
 }
 
 
 export function useAuth() {
-    return useContext(AuthContext);
+  return useContext(AuthContext);
 }
 
 function ProtectedRoute({ children, supervisorOnly = false }) {
-    const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated } = useAuth();
 
-    const isSupervisor =
-        user?.emp_role === "SUPERVISOR" ||
-        user?.emp_role === "MANAGER" ||
-        user?.emp_role === "ADMIN";
+  const isSupervisor =
+    user?.emp_role === "SUPERVISOR" ||
+    user?.emp_role === "MANAGER" ||
+    user?.emp_role === "ADMIN";
 
-    if (!isAuthenticated) {
-        return <Navigate to="/login" replace />;
-    }
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
 
-    if (supervisorOnly && !isSupervisor) {
-        return <Navigate to="/" replace />;
-    }
+  if (supervisorOnly && !isSupervisor) {
+    return <Navigate to="/" replace />;
+  }
 
-    return children;
+  return children;
 }
 
 //const token = localStorage.getItem("token");
@@ -115,23 +115,23 @@ function AppContent() {
             <div style={{ flex: '1' }}>
               <Routes>
                 <Route path="/login" element={<Login />}></Route>
-                              <Route path="/register" element={<Register />}></Route>
-                              <Route path="/logout" element={<Logout />}></Route>
-                              <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>}></Route>
-                              <Route path="/schedule" element={<ProtectedRoute supervisorOnly><SchedulePage /></ProtectedRoute>}></Route>
-                              <Route path="/client" element={<ProtectedRoute ><ClientDetailsPage /></ProtectedRoute>}></Route>
-                              <Route path="/employee" element={<ProtectedRoute supervisorOnly><EmployeeDetails /></ProtectedRoute>}></Route>
-                              <Route path="/injuryReport" element={<ProtectedRoute supervisorOnly><InjuryReportPage /></ProtectedRoute>}></Route>
-                              <Route path="/fillInjuryReport" element={<ProtectedRoute><InjuryReportForm /></ProtectedRoute>}></Route>
-                              <Route path="/monthlySchedule" element={<ProtectedRoute supervisorOnly><GenerateShifts /></ProtectedRoute>}></Route>
-                              <Route path="/addShift" element={<ProtectedRoute supervisorOnly><AddShift /></ProtectedRoute>}></Route>
-                              <Route path="/employee/:id" element={<EmployeeDetailsEach />} />
-                              <Route path="/masterSchedule" element={<ProtectedRoute supervisorOnly><MasterSchedule /></ProtectedRoute>}></Route>
-                              <Route path="/dailySchedule" element={<ProtectedRoute supervisorOnly><DailySchedule /></ProtectedRoute>}></Route>
-                              <Route path="/shift-offers" element={<ProtectedRoute supervisorOnly><ShiftOffers /></ProtectedRoute>}></Route>
-                              <Route path="/clock"element={<ProtectedRoute><ClockIn /></ProtectedRoute>}/>
-                              <Route path="/tasks" element={<ProtectedRoute supervisorOnly><Tasks /></ProtectedRoute>}/>
-                              <Route path="*" element={<Navigate to="/login" replace />} />
+                <Route path="/register" element={<Register />}></Route>
+                <Route path="/logout" element={<Logout />}></Route>
+                <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>}></Route>
+                <Route path="/schedule" element={<ProtectedRoute supervisorOnly><SchedulePage /></ProtectedRoute>}></Route>
+                <Route path="/client" element={<ProtectedRoute ><ClientDetailsPage /></ProtectedRoute>}></Route>
+                <Route path="/employee" element={<ProtectedRoute supervisorOnly><EmployeeDetails /></ProtectedRoute>}></Route>
+                <Route path="/injuryReport" element={<ProtectedRoute><InjuryReportPage /></ProtectedRoute>}></Route>
+                <Route path="/fillInjuryReport" element={<ProtectedRoute><InjuryReportForm /></ProtectedRoute>}></Route>
+                <Route path="/monthlySchedule" element={<ProtectedRoute supervisorOnly><GenerateShifts /></ProtectedRoute>}></Route>
+                <Route path="/addShift" element={<ProtectedRoute supervisorOnly><AddShift /></ProtectedRoute>}></Route>
+                <Route path="/employee/:id" element={<EmployeeDetailsEach />} />
+                <Route path="/masterSchedule" element={<ProtectedRoute supervisorOnly><MasterSchedule /></ProtectedRoute>}></Route>
+                <Route path="/dailySchedule" element={<ProtectedRoute supervisorOnly><DailySchedule /></ProtectedRoute>}></Route>
+                <Route path="/shift-offers" element={<ProtectedRoute supervisorOnly><ShiftOffers /></ProtectedRoute>}></Route>
+                <Route path="/clock" element={<ProtectedRoute><ClockIn /></ProtectedRoute>} />
+                <Route path="/tasks" element={<ProtectedRoute supervisorOnly><Tasks /></ProtectedRoute>} />
+                <Route path="*" element={<Navigate to="/login" replace />} />
               </Routes>
             </div>
             <Footer />
@@ -143,7 +143,7 @@ function AppContent() {
 }
 
 function App() {
-    return <AuthProvider><AppContent /></AuthProvider>;
+  return <AuthProvider><AppContent /></AuthProvider>;
 }
 
 export default App;
