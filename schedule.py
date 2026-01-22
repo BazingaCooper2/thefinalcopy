@@ -5344,7 +5344,7 @@ def shifts_for_tasks_today():
             "shift_id, emp_id, client_id, shift_start_time, shift_end_time, shift_status, clock_in"
         )
         .eq("shift_status", "Clocked in")
-        .is_("clock_out", None)
+        .is_("clock_out", "None")
         .eq("date", today)
         .execute()
     )
