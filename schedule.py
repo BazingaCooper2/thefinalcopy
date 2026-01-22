@@ -878,7 +878,6 @@ def require_supervisor(f):
     return decorated
 
 @app.route('/clients', methods=['GET'])
-@require_supervisor
 def get_clients():
     try:
         response = supabase.table("client").select("""
@@ -900,7 +899,6 @@ def get_clients():
         return jsonify({"error": str(e)}), 500
 
 @app.route('/clients/<int:client_id>', methods=['PUT'])
-@require_supervisor  # Supervisor only
 def update_client(client_id):
     data = request.get_json()
     try:

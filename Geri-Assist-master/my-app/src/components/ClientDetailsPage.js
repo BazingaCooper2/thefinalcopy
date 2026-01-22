@@ -98,11 +98,11 @@ export default function ClientDetailsPage() {
       client.client_id.toString().includes(search.trim()) ||
       client.first_name?.toLowerCase().includes(search.toLowerCase()) ||
       client.last_name?.toLowerCase().includes(search.toLowerCase());
-    const matchesLocation = locationFilter === "" || client.city === locationFilter;
+    const matchesLocation = locationFilter === "" || client.address_line1 === locationFilter;
     return matchesSearch && matchesLocation;
   });
 
-  const locations = [...new Set(clients.map(c => c.city).filter(Boolean))].sort();
+  const locations = [...new Set(clients.map(c => c.address_line1).filter(Boolean))].sort();
 
   const tabs = [
     { id: 'profile', label: 'Profile & Care', icon: 'bi-person-circle' },
