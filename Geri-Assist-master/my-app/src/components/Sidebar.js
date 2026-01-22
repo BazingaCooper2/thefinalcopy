@@ -30,6 +30,12 @@ export default function Sidebar() {
             ],
         },
         {
+            icon: 'bi-clock-fill',
+            label: 'Clock In',
+            path: '/clock',
+        },
+
+        {
             icon: 'bi-calendar-check',
             label: 'ShiftOffers',
             path: '/shift-offers',
@@ -44,6 +50,11 @@ export default function Sidebar() {
                 { label: 'Monthly Schedule', path: '/monthlySchedule' },
                 { label: 'Master Schedule', path: '/masterSchedule' },
             ],
+        },
+        {
+            icon: 'bi-clipboard-check',
+            label: 'Tasks',
+            path: '/tasks',
         },
         {
             icon: 'bi-bandaid-fill',

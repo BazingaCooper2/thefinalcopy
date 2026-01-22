@@ -24,6 +24,7 @@ export default function Logout() {
                 console.error("Logout API failed", err);
             } finally {
                 // Clear frontend auth regardless of API success
+                sessionStorage.removeItem("emp_id");
                 logout();
                 navigate("/login", { replace: true });
             }

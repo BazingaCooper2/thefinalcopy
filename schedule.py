@@ -41,17 +41,29 @@ def dashboard_stats():
         .execute().count
 
     # 2️⃣ Clocked-in Employees
-    clocked_in = supabase.table("shift") \
-        .select("shift_id", count="exact") \
-        .eq("date", today) \
-        .eq("shift_status", "Clocked in") \
-        .execute().count
+    clocked_in = (
+            supabase.table("shift")
+            .select("shift_id", count="exact")
+            .eq("shift_status", "Clocked in")
+            .or_(
+                f"date.eq.{today},clock_in.gte.{today}T00:00:00"
+            )
+            .execute()
+            .count
+        )
+
 
     # 3️⃣ Accepted Offers
-    accepted_offers = supabase.table("shift_offers") \
-        .select("offers_id", count="exact") \
-        .eq("status", "sent") \
-        .execute().count
+    accepted_offers = (
+            supabase.table("shift_offers")
+            .select("offers_id", count="exact")
+            .eq("status", "sent")
+            .gte("sent_at", f"{today}T00:00:00")
+            .lt("sent_at", f"{today}T23:59:59.999999")
+            .execute()
+            .count
+        )
+
 
     # 4️⃣ Employees On Leave
     on_leave = supabase.table("leaves") \
@@ -629,12 +641,13 @@ def register():
             }).execute()
             
             ds = supabase.table("daily_shift").insert({
-                "shift_date":str(final_date),
+                "shift_date": str(final_date),
                 "emp_id": newemp_id,
                 "shift_type": "flw-rtw",
-                "shift_start_time":f"{shift_date} {sh["start"]}:00",
-                "shift_end_time":f"{shift_date} {sh["end"]}:00"
+                "shift_start_time": f"{shift_date} {sh['start']}:00",
+                "shift_end_time": f"{shift_date} {sh['end']}:00"
             }).execute()
+
 
 
     return jsonify({"message": "Registered successfully", "data": response.data}), 201
@@ -832,7 +845,7 @@ def login():
 @app.route('/protected')
 def protected():
     if 'emp_id' in session:
-        return jsonify({'message': f'Welcome, user {session['emp_id']}!'})
+        return jsonify({'message': f"Welcome, user {session['emp_id']}!"})
     else:
         return jsonify({'message': 'Unauthorized'}), 401
 
@@ -881,7 +894,302 @@ STATUS_CONFIG = {
 
     "WAITING": {"label": "WT", "color": "gray"}
 }
+####Occupying for clock in and clock out routers
+from datetime import datetime
+@app.route("/employee/<int:emp_id>/clock-status", methods=["GET"])
+def get_clock_status(emp_id):
+    try:
+        res = (
+            supabase
+            .table("shift")
+            .select(
+                "shift_id, client_id, shift_start_time, shift_end_time, shift_status, clock_in"
+            )
+            .eq("emp_id", emp_id)
+            .eq("shift_status", "Clocked in")
+            .order("clock_in", desc=True)
+            .limit(1)
+            .execute()
+        )
 
+        if not res.data:
+            return jsonify({
+                "clocked_in": False
+            }), 200
+
+        return jsonify({
+            "clocked_in": True,
+            "shift": res.data[0]
+        }), 200
+
+    except Exception as e:
+        print("CLOCK STATUS ERROR:", e)
+        return jsonify({
+            "clocked_in": False,
+            "error": str(e)
+        }), 500
+
+@app.route("/shift/clock-in", methods=["POST"])
+def clock_in():
+    data = request.json
+    shift_id = data.get("shift_id")
+    emp_id = data.get("emp_id")
+
+    if not shift_id or not emp_id:
+        return jsonify({"error": "shift_id and emp_id required"}), 400
+
+    shift = (
+        supabase.table("shift")
+        .select("shift_id, shift_status")
+        .eq("shift_id", shift_id)
+        .eq("emp_id", emp_id)
+        .execute()
+    )
+
+    if not shift.data:
+        return jsonify({"error": "Shift not found or not assigned"}), 404
+
+    if shift.data[0]["shift_status"] == "Clocked in":
+        return jsonify({"error": "Already clocked in"}), 400
+
+    supabase.table("shift").update({
+        "shift_status": "Clocked in",
+        "clock_in": datetime.utcnow().isoformat(),
+        "clock_out": None
+    }).eq("shift_id", shift_id).execute()
+
+    return jsonify({"status": "clocked_in"}), 200
+
+
+@app.route("/shift/clock-out", methods=["POST"])
+def clock_out():
+    data = request.json
+    shift_id = data.get("shift_id")
+    emp_id = data.get("emp_id")
+
+    if not shift_id or not emp_id:
+        return jsonify({"error": "shift_id and emp_id required"}), 400
+
+    shift = (
+        supabase.table("shift")
+        .select("shift_status, clock_in")
+        .eq("shift_id", shift_id)
+        .eq("emp_id", emp_id)
+        .execute()
+    )
+
+    if not shift.data:
+        return jsonify({"error": "Shift not found or not assigned"}), 404
+
+    if shift.data[0]["shift_status"] != "Clocked in":
+        return jsonify({"error": "Shift is not clocked in"}), 400
+
+    supabase.table("shift").update({
+        "shift_status": "Clocked out",
+        "clock_out": datetime.utcnow().isoformat()
+    }).eq("shift_id", shift_id).execute()
+
+    return jsonify({"status": "clocked_out"}), 200
+
+
+@app.route("/dashboard/clock-stats", methods=["GET"])
+def clock_stats():
+    from datetime import datetime
+
+    now = datetime.utcnow()
+    today = now.date().isoformat()
+
+    # Fetch today's shifts with clock times
+    shifts = (
+        supabase.table("shift")
+        .select("clock_in, clock_out")
+        .gte("clock_in", f"{today}T00:00:00")
+        .lt("clock_in", f"{today}T23:59:59.999999")
+        .execute()
+        .data
+    )
+
+    # Hour buckets (6 AM – 6 PM like your UI)
+    hours = list(range(6, 19))
+    timeline = []
+
+    for h in hours:
+        label = f"{h if h <= 12 else h - 12} {'AM' if h < 12 else 'PM'}"
+
+        clocked_in = 0
+        clocked_out = 0
+
+        for s in shifts:
+            if s["clock_in"]:
+                cin_hour = datetime.fromisoformat(s["clock_in"]).hour
+                if cin_hour == h:
+                    clocked_in += 1
+
+            if s["clock_out"]:
+                cout_hour = datetime.fromisoformat(s["clock_out"]).hour
+                if cout_hour == h:
+                    clocked_out += 1
+
+        timeline.append({
+            "time": label,
+            "clockedIn": clocked_in,
+            "clockedOut": clocked_out
+        })
+
+    # Totals for pie chart
+    total_clocked_in = (
+        supabase.table("shift")
+        .select("shift_id", count="exact")
+        .eq("shift_status", "Clocked in")
+        .execute()
+        .count
+    )
+
+    total_clocked_out = (
+        supabase.table("shift")
+        .select("shift_id", count="exact")
+        .eq("shift_status", "Clocked out")
+        .gte("clock_out", f"{today}T00:00:00")
+        .execute()
+        .count
+    )
+
+    return jsonify({
+        "timeline": timeline,
+        "totals": {
+            "clockedIn": total_clocked_in,
+            "clockedOut": total_clocked_out
+        }
+    })
+
+
+######Tasks
+@app.route("/task-assign", methods=["POST"])
+def task_assign():
+    try:
+        data = request.get_json()
+
+        shift_id = data.get("shift_id")
+        details = data.get("details")
+
+        if not shift_id or not details:
+            return jsonify({
+                "success": False,
+                "message": "shift_id and details are required"
+            }), 400
+
+        now = datetime.utcnow().isoformat()
+
+        task_payload = {
+            "shift_id": shift_id,
+            "details": details,
+            "status": False,              # not completed
+            "comment": "Task scheduled, not started",
+            "task_code": f"T{int(datetime.utcnow().timestamp())}",
+            "task_created": now,
+            "task_completed": None
+        }
+
+        res = supabase.table("tasks").insert(task_payload).execute()
+
+        if not res.data:
+            return jsonify({
+                "success": False,
+                "message": "Failed to create task"
+            }), 500
+
+        return jsonify({
+            "success": True,
+            "task": res.data[0]
+        }), 201
+
+    except Exception as e:
+        print("TASK ASSIGN ERROR:", e)
+        return jsonify({
+            "success": False,
+            "message": str(e)
+        }), 500
+
+@app.route("/tasks", methods=["GET"])
+def get_tasks():
+    try:
+        status = request.args.get("status")   # completed | pending | all
+        shift_id = request.args.get("shift_id")
+
+        query = supabase.table("tasks").select("*")
+
+        # Status filter
+        if status == "completed":
+            query = query.eq("status", True)
+        elif status == "pending":
+            query = query.eq("status", False)
+        # else: all → no filter
+
+        # Optional shift filter
+        if shift_id:
+            query = query.eq("shift_id", int(shift_id))
+
+        res = query.order("task_created", desc=True).execute()
+
+        return jsonify({
+            "success": True,
+            "tasks": res.data
+        }), 200
+
+    except Exception as e:
+        print("GET TASKS ERROR:", e)
+        return jsonify({
+            "success": False,
+            "message": str(e)
+        }), 500
+
+@app.route("/task-complete", methods=["POST"])
+def task_complete():
+    try:
+        data = request.get_json()
+
+        task_id = data.get("task_id")
+
+        if not task_id:
+            return jsonify({
+                "success": False,
+                "message": "task_id is required"
+            }), 400
+
+        now = datetime.utcnow().isoformat()
+
+        res = (
+            supabase
+            .table("tasks")
+            .update({
+                "status": True,
+                "comment":"Task Completed",
+                "task_completed": now
+            })
+            .eq("task_id", task_id)
+            .execute()
+        )
+
+        if not res.data:
+            return jsonify({
+                "success": False,
+                "message": "Task not found or already completed"
+            }), 404
+
+        return jsonify({
+            "success": True,
+            "task": res.data[0]
+        }), 200
+
+    except Exception as e:
+        print("TASK COMPLETE ERROR:", e)
+        return jsonify({
+            "success": False,
+            "message": str(e)
+        }), 500
+
+
+#######employes
 @app.route('/employees', methods=['GET'])
 def get_employees():
     try:
@@ -967,6 +1275,48 @@ def get_employees_with_status():
         })
 
     return result
+@app.route("/dashboard/employee-status", methods=["GET"])
+def employee_status_stats():
+    from datetime import datetime
+
+    today = datetime.utcnow().date().isoformat()
+
+    # Total employees
+    total_employees = (
+        supabase.table("employee")
+        .select("emp_id", count="exact")
+        .execute()
+        .count
+    )
+
+    # On Leave today
+    on_leave = (
+        supabase.table("leaves")
+        .select("emp_id", count="exact")
+        .lte("leave_start_date", today)
+        .gte("leave_end_date", today)
+        .execute()
+        .count
+    )
+
+    # Currently clocked in
+    clocked_in = (
+        supabase.table("shift")
+        .select("shift_id", count="exact")
+        .eq("shift_status", "Clocked in")
+        .execute()
+        .count
+    )
+
+    unavailable = clocked_in
+    available = max(total_employees - (on_leave + unavailable), 0)
+
+    return jsonify([
+        { "name": "Available", "value": available, "color": "#06b6d4" },
+        { "name": "Unavailable", "value": unavailable, "color": "#8b5cf6" },
+        { "name": "On Leave", "value": on_leave, "color": "#f97316" }
+    ])
+
         
 @app.route("/injury_reports", methods=["GET"])
 def get_injury_reports():
@@ -2164,6 +2514,78 @@ def update_master_shift():
     except Exception as e:
         print("ERROR:", e)
         return jsonify({"error": str(e)}), 500
+
+###Shift related
+
+@app.route("/employee/<int:emp_id>/live-shift", methods=["GET"])
+def get_live_shift(emp_id):
+    try:
+        today = datetime.utcnow().strftime("%d-%m-%Y")
+
+        res = (
+            supabase
+            .table("shift")
+            .select(
+                "shift_id, client_id, shift_start_time, shift_end_time, shift_status, clock_in"
+            )
+            .eq("emp_id", emp_id)
+            .eq("date", today)
+            .order("shift_start_time")
+            .limit(1)
+            .execute()
+        )
+
+        if not res.data:
+            return jsonify({
+                "live": False
+            }), 200
+
+        return jsonify({
+            "live": True,
+            "shift": res.data[0]
+        }), 200
+
+    except Exception as e:
+        print("LIVE SHIFT ERROR:", e)
+        return jsonify({
+            "live": False,
+            "error": str(e)
+        }), 500
+
+
+
+@app.route("/shifts-for-tasks", methods=["GET"])
+def shifts_for_tasks_today():
+    today = datetime.utcnow().date().isoformat()
+
+    # 1️⃣ All LIVE shifts (clocked in right now)
+    live_res = (
+        supabase.table("shift")
+        .select(
+            "shift_id, emp_id, client_id, shift_start_time, shift_end_time, shift_status, clock_in"
+        )
+        .eq("shift_status", "Clocked in")
+        .is_("clock_out", None)
+        .eq("date", today)
+        .execute()
+    )
+
+    # 2️⃣ All TODAY shifts that can have tasks (Scheduled + Clocked in)
+    shifts_res = (
+        supabase.table("shift")
+        .select(
+            "shift_id, emp_id, client_id, shift_start_time, shift_end_time, shift_status"
+        )
+        .eq("date", today)
+        .in_("shift_status", ["Scheduled", "Clocked in"])
+        .order("shift_start_time")
+        .execute()
+    )
+
+    return jsonify({
+        "live_shifts": live_res.data or [],
+        "shifts": shifts_res.data or []
+    }), 200
 
 @app.route("/shift-offers", methods=["GET"])
 def get_shift_offers():
