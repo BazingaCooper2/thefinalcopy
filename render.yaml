@@ -11,3 +11,17 @@ services:
         sync: false
       - key: SUPABASE_KEY
         sync: false
+
+  - type: web
+    name: gerri-frontend
+    runtime: static
+    rootDir: Geri-Assist-master/my-app
+    buildCommand: npm install && npm run build
+    staticPublishPath: build
+    envVars:
+      - key: REACT_APP_API_URL
+        value: https://thefinalcopy-3.onrender.com
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
