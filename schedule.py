@@ -2748,15 +2748,15 @@ def dashboard_stats():
 
     # 2️⃣ Clocked-in Employees
     clocked_in = (
-            supabase.table("shift")
-            .select("shift_id", count="exact")
-            .eq("shift_status", "Clocked in")
-            .or_(
-                f"date.eq.{today},clock_in.gte.{today}T00:00:00"
-            )
-            .execute()
-            .count
-        )
+        supabase.table("shift")
+        .select("shift_id", count="exact")
+        .eq("shift_status", "Clocked in")
+        .gte("clock_in", f"{today}T00:00:00")
+        .execute()
+        .count
+    )
+
+
 
 
     # 3️⃣ Accepted Offers
