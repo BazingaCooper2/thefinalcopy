@@ -1,3 +1,4 @@
+from storage3._sync import client
 from supabase import create_client, Client
 from flask import Flask, jsonify, request, session
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -128,11 +129,11 @@ def edit_schedule():
 
     s_time = datetime.strptime(data['shift_start_time'], "%Y-%m-%dT%H:%M:%S")
     e_time = datetime.strptime(data['shift_end_time'], "%Y-%m-%dT%H:%M:%S")
-
+    print(s_time)
     # 2. Update shift times
     supabase.table("shift").update({
-        "shift_start_time": str(s_time),
-        "shift_end_time": str(e_time)
+        "shift_start_time": str(s_time).split(' ')[1][:5],
+        "shift_end_time": str(e_time).split(' ')[1][:5]
     }).eq("shift_id", s_id).execute()
 
     # 3. Call Postgres function for daily_shift updates
@@ -231,8 +232,11 @@ def parse_datetime(tstr: str) -> datetime:
             continue
     raise ValueError(f"Unknown datetime format: {tstr}")
 
-def overlaps(em,client_start_time, client_end_time, dsst, dset, ssst, sset):
+def overlaps(em,cdate,client_start_time, client_end_time, dsst, dset, ssst, sset, sdate):
     """Check if time overlaps."""
+    client_start_time = f"{cdate} {client_start_time}"
+    client_end_time = f"{cdate} {client_end_time}"
+    
     print(em)
     if(dsst=="" or dset==""):
         return False
@@ -245,6 +249,8 @@ def overlaps(em,client_start_time, client_end_time, dsst, dset, ssst, sset):
             and client_start_dt >= dsst_dt and client_start_dt <= dset_dt
             and client_end_dt >= dsst_dt and client_end_dt <= dset_dt))
     else:
+        ssst = f"{sdate} {ssst}"
+        sset = f"{sdate} {sset}"
         client_start_dt = parse_datetime(client_start_time)
         client_end_dt   = parse_datetime(client_end_time)
         dsst_dt         = parse_datetime(dsst)
@@ -300,6 +306,7 @@ def get_employees_for_shift(dateofshift):
                 "ssst": s["shift_start_time"],
                 "sset": s["shift_end_time"],
                 "leaves": emp_leaves,
+                "sdate": s["date"],
                 "employee_type":e["employee_type"],
             })
         elif ds and not s:
@@ -310,6 +317,7 @@ def get_employees_for_shift(dateofshift):
                 "ssst": "",
                 "sset": "",
                 "leaves": emp_leaves,
+                "sdate": "",
                 "employee_type":e["employee_type"],
             })
     print(merged)
@@ -336,9 +344,9 @@ def assign_tasks(changes):
             e for e in employeetab
             if (
                 overlaps(
-                    e,
+                    e, ch['date'],
                     ch['shift_start_time'], ch['shift_end_time'],
-                    e['dsst'], e['dset'], e['ssst'], e['sset']
+                    e['dsst'], e['dset'], e['ssst'], e['sset'], e["sdate"]
                 )
                 and (
                     e['leaves'] == []
@@ -365,7 +373,13 @@ def assign_tasks(changes):
         )
         print("the eligible employees")
         print(eligible)
-        shift_start = datetime.fromisoformat(ch['shift_start_time'])
+        shift_time = ch["shift_start_time"]  # "16:00"
+        today = date.today()
+
+        shift_start = datetime.strptime(
+            f"{today} {shift_time}",
+            "%Y-%m-%d %H:%M"
+        )
         hours_to_shift = (shift_start - datetime.utcnow()).total_seconds() / 3600
 
         
@@ -749,8 +763,8 @@ def prepare_schedule():
                     day_diff = (day_num - today.weekday() + 7) % 7 + (week * 7)
                     shift_date = today + timedelta(days=day_diff)
 
-                    shift_start = f"{shift_date} {start_time}:00"
-                    shift_end = f"{shift_date} {end_time}:00"
+                    shift_start = start_time
+                    shift_end = end_time
                     yr, mm, dd = str(shift_date).split("-")
                     final_date = dd+"-"+mm+"-"+yr
                     response = supabase.table("shift").insert({
@@ -2154,14 +2168,14 @@ def client_generate_next_month_shifts():
 
             if weekday in timeline_map:
                 date_str = current_date.strftime("%Y-%m-%d")
-                start_time = timeline_map[weekday]["start"]
-                end_time = timeline_map[weekday]["end"]
+                start_time = timeline_map[weekday]["start"][:5]
+                end_time = timeline_map[weekday]["end"][:5]
 
                 new_entries.append({
                     "client_id": client_id,
                     "date": date_str,
-                    "shift_start_time": f"{date_str} {start_time}",
-                    "shift_end_time": f"{date_str} {end_time}",
+                    "shift_start_time": start_time,
+                    "shift_end_time": end_time,
                 })
 
             current_date += timedelta(days=1)
