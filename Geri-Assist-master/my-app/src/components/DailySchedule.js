@@ -57,12 +57,12 @@ export default function DailySchedule() {
     const handleEditClick = (shift, isClientShift = true) => {
         setEditingShift({ ...shift, isClientShift });
 
-        const startTime = new Date(`${shift.date}T${shift.shift_start_time}`);
-        const endTime = new Date(`${shift.date}T${shift.shift_end_time}`);
+        const startTime = (`${shift.date} ${shift.shift_start_time}`);
+        const endTime = (`${shift.date} ${shift.shift_end_time}`);
 
         setEditFormData({
-            shift_start_time: startTime.toISOString(),
-            shift_end_time: endTime.toISOString()
+            shift_start_time: startTime,
+            shift_end_time: endTime
         });
         setShowEditModal(true);
     };
@@ -73,8 +73,8 @@ export default function DailySchedule() {
                 await axios.post(`${API_URL}/submit`, {
                     shift_id: editingShift.shift_id,
                     client_id: editingShift.client_id,
-                    shift_start_time: new Date(editFormData.shift_start_time).toISOString().replace(' ', 'T').slice(0, 19),
-                    shift_end_time: new Date(editFormData.shift_end_time).toISOString().replace(' ', 'T').slice(0, 19)
+                    shift_start_time: editFormData.shift_start_time.replace(' ', 'T') + ':00',
+                    shift_end_time: editFormData.shift_end_time.replace(' ', 'T') + ':00'
                 });
             }
 
@@ -258,19 +258,20 @@ export default function DailySchedule() {
                                                 const [startHour, startMin, startSec] = dailyShift.shift_start_time.split(' ')[1].split(':').map(Number);
                                                 const [endHour, endMin, endSec] = dailyShift.shift_end_time.split(' ')[1].split(':').map(Number);
 
-                                                const startTime = startHour + (startMin / 60);
-                                                const endTime = endHour + (endMin / 60);
+                                                
+                                                const gridColumn = startHour + 1;
 
-                                                // Calculate grid column positions (1-indexed)
-                                                const gridStart = Math.floor(startTime) + 1;
-                                                const gridEnd = Math.ceil(endTime) + 1;
+                                                const startFraction = startMin / 60;
+                                                const endFraction = (endHour + endMin / 60) - (startHour + startFraction);
 
                                                 return (
                                                     <div
                                                         className="shift-block employee-daily-shift"
                                                         style={{
-                                                            gridColumnStart: gridStart,
-                                                            gridColumnEnd: gridEnd
+                                                            gridColumnStart: gridColumn,
+                                                            position: 'relative',
+                                                            left: `${startFraction * 100}%`,
+                                                            width: `${endFraction * 100}%`
                                                         }}
                                                     >
                                                         <div className="shift-block-content">
@@ -309,16 +310,20 @@ export default function DailySchedule() {
                                                     const startHour = shiftStart.getHours() + (shiftStart.getMinutes() / 60);
                                                     const endHour = shiftEnd.getHours() + (shiftEnd.getMinutes() / 60);
 
-                                                    const gridStart = Math.floor(startHour) + 1;
-                                                    const gridEnd = Math.ceil(endHour) + 1;
+                                                    const gridColumn = startHour + 1;
+
+                                                    const startFraction = (shiftStart.getMinutes() / 60);
+                                                    const endFraction = (endHour + (shiftEnd.getMinutes() / 60)) - (startHour + startFraction);
 
                                                     return (
                                                         <div
                                                             key={shiftIndex}
                                                             className="shift-block client-shift"
                                                             style={{
-                                                                gridColumnStart: gridStart,
-                                                                gridColumnEnd: gridEnd
+                                                                gridColumnStart: gridColumn,
+                                                                position: 'relative',
+                                                                left: `${startFraction * 100}%`,
+                                                                width: `${endFraction * 100}%`
                                                             }}
                                                             onClick={() => handleEditClick(shift, true)}
                                                         >

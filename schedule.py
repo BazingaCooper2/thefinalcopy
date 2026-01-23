@@ -2834,7 +2834,7 @@ def edit_schedule():
 
     s_time = datetime.strptime(data['shift_start_time'], "%Y-%m-%dT%H:%M:%S")
     e_time = datetime.strptime(data['shift_end_time'], "%Y-%m-%dT%H:%M:%S")
-
+    print(e_time)
     # 2. Update shift times
     supabase.table("shift").update({
         "shift_start_time": str(s_time).split(' ')[1][:5],
