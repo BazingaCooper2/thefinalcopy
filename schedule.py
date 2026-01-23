@@ -2998,11 +2998,11 @@ def get_employees_for_shift(dateofshift):
         s = next((s for s in shifts.data if s["emp_id"] == emp_id), None)
         emp_leaves = [
         {
-            "start": f"{lv['leave_start_date']} {lv['leave_start_time']}",
-            "end": f"{lv['leave_end_date']} {lv['leave_end_time']}"
+            "start": lv['leave_start_time'],
+            "end": lv['leave_end_time'],
         }
         for lv in leaves if lv["emp_id"] == emp_id
-]
+        ]
         if ds and s:
             merged.append({
                 "emp_id": emp_id,
@@ -3022,7 +3022,7 @@ def get_employees_for_shift(dateofshift):
                 "ssst": "",
                 "sset": "",
                 "leaves": emp_leaves,
-                "sdate": s["date"],
+                "sdate": "",
                 "employee_type":e["employee_type"],
             })
     print(merged)
@@ -4979,8 +4979,8 @@ def add_unavailability():
     return jsonify({"message": "Unavailability added successfully"})
 def leave_processing(emp_id,leave_start_date,leave_end_date,leave_start_time,leave_end_time):
     # Convert full timestamps
-    leave_start = f"{leave_start_date} {leave_start_time}"
-    leave_end = f"{leave_end_date} {leave_end_time}"
+    leave_start = leave_start_time
+    leave_end = leave_end_time
 
     # 2️⃣ Fetch existing assigned shifts
     assigned_shifts = supabase.table("shift") \
@@ -4989,13 +4989,34 @@ def leave_processing(emp_id,leave_start_date,leave_end_date,leave_start_time,lea
         .eq("shift_status", "Scheduled") \
         .execute().data
 
-    def overlaps(s, e, ls, le):
-        return not (e <= ls or s >= le)
+    def to_hhmm(t):
+        """
+        Accepts 'HH:MM', 'HH:MM:SS', or 'YYYY-MM-DD HH:MM[:SS]'
+        Returns 'HH:MM'
+        """
+        if isinstance(t, str):
+            if ' ' in t:
+                t = t.split(' ')[1]
+            return t[:5]
+        return t.strftime('%H:%M')
+    def to_dt(d):
+        return datetime.fromisoformat(d).strftime("%Y-%m-%d")
+
+
+    def overlaps(s, e, ls, le, sd, lsd, led):
+        sd = to_dt(sd)
+        s = to_hhmm(s)
+        e = to_hhmm(e)
+        ls = to_hhmm(ls)
+        le = to_hhmm(le)
+        if sd >= lsd and sd <= led:
+            return not (e <= ls or s >= le)
+        return False
 
     # 3️⃣ Find affected shifts → mark them unassigned
     unassigned = []
     for s in assigned_shifts:
-        if overlaps(s["shift_start_time"], s["shift_end_time"], leave_start, leave_end):
+        if overlaps(s["shift_start_time"], s["shift_end_time"], leave_start, leave_end, s["date"], leave_start_date, leave_end_date):
             supabase.table("shift").update({
                 "emp_id": None,
                 "shift_status": "Unassigned"

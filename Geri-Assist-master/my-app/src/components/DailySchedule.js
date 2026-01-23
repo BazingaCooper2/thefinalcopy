@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Modal, Button } from 'react-bootstrap';
 import './DailySchedule.css';
@@ -310,6 +310,7 @@ export default function DailySchedule() {
                                                     const startHour = shiftStart.getHours() + (shiftStart.getMinutes() / 60);
                                                     const endHour = shiftEnd.getHours() + (shiftEnd.getMinutes() / 60);
 
+                                       
                                                     const gridColumn = startHour + 1;
 
                                                     const startFraction = (shiftStart.getMinutes() / 60);
