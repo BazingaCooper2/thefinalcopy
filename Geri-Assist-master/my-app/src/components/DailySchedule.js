@@ -16,8 +16,7 @@ export default function DailySchedule() {
         shift_end_time: ''
     });
     const [expandedEmployees, setExpandedEmployees] = useState({});
-    const locations = ['All Locations', '85 Neeve', '87 Neeve', 'Willow Place', 'Outreach'];
-
+    const locations = ['All Locations', '85 Neeve', '87 Neeve', 'Willow Place', 'Outreach', 'Assisted Living', 'Seniors Assisted Living'];
     // Generate array of time slots for a single day (24 hours)
     const getTimeSlots = () => {
         const slots = [];
@@ -58,12 +57,12 @@ export default function DailySchedule() {
     const handleEditClick = (shift, isClientShift = true) => {
         setEditingShift({ ...shift, isClientShift });
 
-        const startTime = new Date(shift.shift_start_time);
-        const endTime = new Date(shift.shift_end_time);
+        const startTime = new Date(`${shift.date}T${shift.shift_start_time}`);
+        const endTime = new Date(`${shift.date}T${shift.shift_end_time}`);
 
         setEditFormData({
-            shift_start_time: startTime.toISOString().slice(0, 16),
-            shift_end_time: endTime.toISOString().slice(0, 16)
+            shift_start_time: startTime.toISOString(),
+            shift_end_time: endTime.toISOString()
         });
         setShowEditModal(true);
     };
@@ -74,8 +73,8 @@ export default function DailySchedule() {
                 await axios.post(`${API_URL}/submit`, {
                     shift_id: editingShift.shift_id,
                     client_id: editingShift.client_id,
-                    shift_start_time: new Date(editFormData.shift_start_time).toISOString().replace('T', ' ').slice(0, 19),
-                    shift_end_time: new Date(editFormData.shift_end_time).toISOString().replace('T', ' ').slice(0, 19)
+                    shift_start_time: new Date(editFormData.shift_start_time).toISOString().replace(' ', 'T').slice(0, 19),
+                    shift_end_time: new Date(editFormData.shift_end_time).toISOString().replace(' ', 'T').slice(0, 19)
                 });
             }
 
@@ -277,7 +276,7 @@ export default function DailySchedule() {
                                                         <div className="shift-block-content">
                                                             <div className="shift-time-range">
                                                                 <i className="bi bi-clock"></i>
-                                                                {dailyShift.shift_start_time} - {dailyShift.shift_end_time}
+                                                                {dailyShift.shift_start_time.toString().split(' ')[1].slice(0, 6)} - {dailyShift.shift_end_time.toString().split(' ')[1].slice(0, 6)}
                                                             </div>
                                                             <div className="shift-location-info">
                                                                 <i className="bi bi-geo-alt"></i> {employee.service_type || 'Staff'}
@@ -303,8 +302,8 @@ export default function DailySchedule() {
                                             <div className="employee-time-slots">
                                                 {clientShifts.map((shift, shiftIndex) => {
                                                     const client = getClient(shift.client_id);
-                                                    const shiftStart = new Date(shift.shift_start_time);
-                                                    const shiftEnd = new Date(shift.shift_end_time);
+                                                    const shiftStart = new Date(`${shift.date}T${shift.shift_start_time}`);
+                                                    const shiftEnd = new Date(`${shift.date}T${shift.shift_end_time}`);
 
                                                     // Calculate grid positions based on hours
                                                     const startHour = shiftStart.getHours() + (shiftStart.getMinutes() / 60);
@@ -326,7 +325,7 @@ export default function DailySchedule() {
                                                             <div className="shift-block-content">
                                                                 <div className="shift-time-range">
                                                                     <i className="bi bi-clock"></i>
-                                                                    {formatTime(shift.shift_start_time)} - {formatTime(shift.shift_end_time)}
+                                                                    {formatTime(`${shift.date}T${shift.shift_start_time}`)} - {formatTime(`${shift.date}T${shift.shift_end_time}`)}
                                                                 </div>
                                                                 <div className="shift-client-info">
                                                                     <i className="bi bi-person"></i> {client ? `${client.first_name} ${client.last_name}` : 'Client'}
@@ -375,7 +374,7 @@ export default function DailySchedule() {
                                     Start Time
                                 </label>
                                 <input
-                                    type="datetime-local"
+                                    type="text"
                                     className="form-control"
                                     value={editFormData.shift_start_time}
                                     onChange={(e) => setEditFormData({
@@ -391,7 +390,7 @@ export default function DailySchedule() {
                                     End Time
                                 </label>
                                 <input
-                                    type="datetime-local"
+                                    type="text"
                                     className="form-control"
                                     value={editFormData.shift_end_time}
                                     onChange={(e) => setEditFormData({
