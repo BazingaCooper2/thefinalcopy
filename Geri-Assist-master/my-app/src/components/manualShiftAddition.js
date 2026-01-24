@@ -16,7 +16,7 @@ const AddShift = () => {
         shift_start_time: "09:00",
         shift_end_time: "17:00",
         shift_type: "flw_rtw",
-        status:"Scheduled",
+        status: "Scheduled",
     });
 
     // Fetch employee + client list
@@ -93,7 +93,7 @@ const AddShift = () => {
                             className={`btn ${mode === "client" ? "btn-primary" : "btn-outline-primary"}`}
                             onClick={() => setMode("client")}
                         >
-                            Client Shift
+                            Client Shift (Visit)
                         </button>
 
                         <button
@@ -143,7 +143,7 @@ const AddShift = () => {
                                     </select>
                                 </div>
 
-                                
+
                             </>
                         ) : (
                             <>
@@ -163,22 +163,22 @@ const AddShift = () => {
                                             </option>
                                         ))}
                                     </select>
-                                    </div>
-                                    {/* Shift Type */}
-                                    <div className="mb-3">
-                                        <label className="form-label fw-bold">Shift Type</label>
-                                        <select
-                                            name="text"
-                                            className="form-select"
-                                            value={formData.shift_type}
-                                            onChange={handleChange}
-                                        >
-                                            <option value="flw-rtw">FLW Return to Work</option>
-                                            <option value="flw-training">FLW Training</option>
-                                            <option value="gil-training">GIL Training</option>
+                                </div>
+                                {/* Shift Type */}
+                                <div className="mb-3">
+                                    <label className="form-label fw-bold">Shift Type</label>
+                                    <select
+                                        name="text"
+                                        className="form-select"
+                                        value={formData.shift_type}
+                                        onChange={handleChange}
+                                    >
+                                        <option value="flw-rtw">FLW Return to Work</option>
+                                        <option value="flw-training">FLW Training</option>
+                                        <option value="gil-training">GIL Training</option>
 
-                                        </select>
-                                    </div>
+                                    </select>
+                                </div>
                             </>
                         )}
 

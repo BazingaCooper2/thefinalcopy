@@ -27,21 +27,23 @@ export default function DashboardGraphs() {
             .then(res => res.json())
             .then(data => {
                 setClockData(data.timeline);
-    
+
                 setClockStatusData([
                     { name: 'Clocked In', value: data.totals.clockedIn, color: '#8b5cf6' },
                     { name: 'Clocked Out', value: data.totals.clockedOut, color: '#06b6d4' },
                 ]);
-            });
-    
+            })
+            .catch(err => console.error("Error fetching clock stats:", err));
+
         // Employee status pie
         fetch(`${API_URL}/dashboard/employee-status`)
             .then(res => res.json())
             .then(data => {
                 setStatusData(data);
-            });
+            })
+            .catch(err => console.error("Error fetching employee status:", err));
     }, []);
-    
+
     const CustomTooltip = ({ active, payload, label }) => {
         if (active && payload && payload.length) {
             return (

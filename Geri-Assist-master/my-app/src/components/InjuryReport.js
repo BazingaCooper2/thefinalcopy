@@ -208,10 +208,6 @@ function InjuryReportPage() {
                         <Button variant="outline-primary" onClick={(e) => { e.stopPropagation(); setSelectedReport(report); }}>View</Button>
                         <Dropdown.Toggle split variant="outline-primary" id={`dropdown-split-${report.id}`} />
                         <Dropdown.Menu>
-                          <Dropdown.Item onClick={(e) => handleAction(e, 'Approve', report)}>Approve</Dropdown.Item>
-                          <Dropdown.Item onClick={(e) => handleAction(e, 'Email', report)}>Email</Dropdown.Item>
-                          <Dropdown.Item onClick={(e) => handleAction(e, 'Print', report)}>Print</Dropdown.Item>
-                          <Dropdown.Divider />
                           <Dropdown.Item className="text-danger" onClick={(e) => handleAction(e, 'Delete', report)}>Delete</Dropdown.Item>
                         </Dropdown.Menu>
                       </Dropdown>
@@ -224,48 +220,220 @@ function InjuryReportPage() {
         )}
       </div>
 
+      {/* Print Styles */}
+      <style>
+        {`
+          @media print {
+            body * {
+              visibility: hidden;
+            }
+            .modal.show {
+              position: absolute;
+              left: 0;
+              top: 0;
+              margin: 0;
+              padding: 0;
+              overflow: visible !important;
+            }
+            .modal-content, .modal-content * {
+              visibility: visible;
+            }
+            .modal-content {
+              box-shadow: none !important;
+              border: none !important;
+            }
+            .modal-header, .modal-footer, .btn-close {
+              display: none !important;
+            }
+            .modal-body {
+              padding: 0 !important;
+            }
+          }
+        `}
+      </style>
+
       {/* View Modal */}
       {selectedReport && (
         <div className="modal fade show d-block" tabIndex="-1" style={{ background: 'rgba(0,0,0,0.5)' }}>
-          <div className="modal-dialog modal-lg modal-dialog-centered">
+          <div className="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
             <div className="modal-content border-0 shadow-lg animate-slideUp">
               <div className="modal-header bg-light">
                 <h5 className="modal-title fw-bold">
-                  Incident Report Details
+                  Incident Report Details #{selectedReport.id || 'N/A'}
                 </h5>
                 <button type="button" className="btn-close" onClick={() => setSelectedReport(null)}></button>
               </div>
               <div className="modal-body p-4">
                 <div className="row g-4">
-                  <div className="col-md-12 text-center pb-3 border-bottom">
+
+                  {/* Status Banner */}
+                  <div className="col-12 text-center pb-3 border-bottom">
                     {getSeverityBadge(selectedReport.severity)}
                     <h3 className="mt-2 text-primary fw-bold">{selectedReport.injured_person}</h3>
-                    <p className="text-muted"><i className="bi bi-geo-alt me-1"></i> {selectedReport.location} | {new Date(selectedReport.date).toLocaleString()}</p>
+                    <p className="text-muted mb-1">
+                      <i className="bi bi-geo-alt me-1"></i> {selectedReport.location} &bull;
+                      <i className="bi bi-calendar3 ms-2 me-1"></i> {new Date(selectedReport.date).toLocaleDateString()} &bull;
+                      <i className="bi bi-clock ms-2 me-1"></i> {selectedReport.injury_time || 'N/A'}
+                    </p>
+                    <span className={`badge ${selectedReport.status === 'Approved' ? 'bg-success' : 'bg-secondary'}`}>
+                      Status: {selectedReport.status || 'Submitted'}
+                    </span>
                   </div>
 
+                  {/* 1. Incident Description */}
+                  <div className="col-12">
+                    <div className="bg-light p-3 rounded h-100">
+                      <label className="text-primary small fw-bold text-uppercase mb-2">Description of Incident</label>
+                      <p className="mb-0" style={{ whiteSpace: 'pre-wrap' }}>{selectedReport.description || 'No description provided.'}</p>
+                    </div>
+                  </div>
+
+                  {/* 2. Injury Details */}
                   <div className="col-md-6">
-                    <label className="text-muted small fw-bold text-uppercase">Reported By</label>
-                    <p className="lead fs-6">{selectedReport.reporting_employee}</p>
+                    <div className="card h-100 border-0 shadow-sm">
+                      <div className="card-header bg-white fw-bold text-dark border-bottom-0 pb-0 ps-0">
+                        <i className="bi bi-bandaid me-2 text-danger"></i>Injury Details
+                      </div>
+                      <div className="card-body ps-0">
+                        <dl className="row mb-0">
+                          <dt className="col-sm-5 text-muted small text-uppercase">Date of Injury</dt>
+                          <dd className="col-sm-7">{selectedReport.injury_date}</dd>
+
+                          <dt className="col-sm-5 text-muted small text-uppercase">Time of Injury</dt>
+                          <dd className="col-sm-7">{selectedReport.injury_time}</dd>
+
+                          <dt className="col-sm-5 text-muted small text-uppercase">Body Parts</dt>
+                          <dd className="col-sm-7">
+                            {Array.isArray(selectedReport.injured_body_parts)
+                              ? selectedReport.injured_body_parts.join(", ")
+                              : selectedReport.injured_body_parts || 'None specified'}
+                          </dd>
+
+                          <dt className="col-sm-5 text-muted small text-uppercase">Program/Service</dt>
+                          <dd className="col-sm-7">{selectedReport.program || 'N/A'}</dd>
+
+                          <dt className="col-sm-5 text-muted small text-uppercase">Time Left Work</dt>
+                          <dd className="col-sm-7">{selectedReport.time_left_work || 'N/A'}</dd>
+                        </dl>
+                      </div>
+                    </div>
                   </div>
+
+                  {/* 3. Reporting Info */}
                   <div className="col-md-6">
-                    <label className="text-muted small fw-bold text-uppercase">Incident ID</label>
-                    <p className="lead fs-6">#{selectedReport.id || 'N/A'}</p>
+                    <div className="card h-100 border-0 shadow-sm">
+                      <div className="card-header bg-white fw-bold text-dark border-bottom-0 pb-0 ps-0">
+                        <i className="bi bi-file-earmark-text me-2 text-info"></i>Reporting Info
+                      </div>
+                      <div className="card-body ps-0">
+                        <dl className="row mb-0">
+                          <dt className="col-sm-5 text-muted small text-uppercase">Reported By</dt>
+                          <dd className="col-sm-7">{selectedReport.reporting_employee}</dd>
+
+                          <dt className="col-sm-5 text-muted small text-uppercase">Date Reported</dt>
+                          <dd className="col-sm-7">{selectedReport.reported_date}</dd>
+
+                          <dt className="col-sm-5 text-muted small text-uppercase">Time Reported</dt>
+                          <dd className="col-sm-7">{selectedReport.reported_time}</dd>
+
+                          <dt className="col-sm-5 text-muted small text-uppercase">Reported To</dt>
+                          <dd className="col-sm-7">{selectedReport.reported_to_supervisor_name || 'N/A'}</dd>
+
+                          <dt className="col-sm-5 text-muted small text-uppercase">Delay Reason</dt>
+                          <dd className="col-sm-7">{selectedReport.delay_reason || 'N/A'}</dd>
+                        </dl>
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="col-12 bg-light p-3 rounded">
-                    <label className="text-primary small fw-bold text-uppercase mb-2">Description of Incident / Injury</label>
-                    <p className="mb-0" style={{ whiteSpace: 'pre-wrap' }}>{selectedReport.description}</p>
+                  {/* 4. Medical Information */}
+                  <div className="col-md-6">
+                    <div className="card h-100 border-0 shadow-sm">
+                      <div className="card-header bg-white fw-bold text-dark border-bottom-0 pb-0 ps-0">
+                        <i className="bi bi-hospital me-2 text-success"></i>Medical Info
+                      </div>
+                      <div className="card-body ps-0">
+                        <dl className="row mb-0">
+                          <dt className="col-sm-7 text-muted small text-uppercase">Medical Attention?</dt>
+                          <dd className="col-sm-5 fw-bold">{selectedReport.medical_attention_required ? "YES" : "NO"}</dd>
+
+                          <dt className="col-sm-7 text-muted small text-uppercase">RTW Package Given?</dt>
+                          <dd className="col-sm-5 fw-bold">{selectedReport.rtw_package_taken ? "YES" : "NO"}</dd>
+
+                          <dt className="col-sm-7 text-muted small text-uppercase">FAF Form Brought?</dt>
+                          <dd className="col-sm-5 fw-bold">{selectedReport.faf_form_brought ? "YES" : "NO"}</dd>
+
+                          <dt className="col-sm-12 text-muted small text-uppercase mt-2">Health Care Provider</dt>
+                          <dd className="col-sm-12">
+                            {selectedReport.hcp_name ? (
+                              <div className="bg-light p-2 rounded small">
+                                <strong>{selectedReport.hcp_name}</strong><br />
+                                {selectedReport.hcp_address}<br />
+                                Ph: {selectedReport.hcp_phone}
+                              </div>
+                            ) : "N/A"}
+                          </dd>
+                        </dl>
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="col-12 border p-3 rounded">
+                  {/* 5. Witness Information */}
+                  <div className="col-md-6">
+                    <div className="card h-100 border-0 shadow-sm">
+                      <div className="card-header bg-white fw-bold text-dark border-bottom-0 pb-0 ps-0">
+                        <i className="bi bi-eye me-2 text-warning"></i>Witness Info
+                      </div>
+                      <div className="card-body ps-0">
+                        {selectedReport.witness_name ? (
+                          <dl className="row mb-0">
+                            <dt className="col-sm-4 text-muted small text-uppercase">Name</dt>
+                            <dd className="col-sm-8">{selectedReport.witness_name}</dd>
+                            <dt className="col-sm-4 text-muted small text-uppercase">Phone</dt>
+                            <dd className="col-sm-8">{selectedReport.witness_phone}</dd>
+                            <dt className="col-sm-4 text-muted small text-uppercase">Remarks</dt>
+                            <dd className="col-sm-8 fst-italic">"{selectedReport.witness_remarks}"</dd>
+                          </dl>
+                        ) : (
+                          <p className="text-muted fst-italic">No witness recorded.</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 6. Employee Contact */}
+                  <div className="col-12">
+                    <div className="card border-0 bg-light">
+                      <div className="card-body">
+                        <h6 className="fw-bold mb-3">Employee Contact Information</h6>
+                        <div className="row small">
+                          <div className="col-md-4">
+                            <strong>Phone:</strong> {selectedReport.emp_phone || 'N/A'}
+                          </div>
+                          <div className="col-md-4">
+                            <strong>Email:</strong> {selectedReport.emp_email || 'N/A'}
+                          </div>
+                          <div className="col-md-4">
+                            <strong>Address:</strong> {selectedReport.emp_address || 'N/A'}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Action Taken (Status) - existing field logic */}
+                  <div className="col-12 border-top pt-3">
                     <label className="text-success small fw-bold text-uppercase mb-2">Action Taken / Status</label>
                     <p className="mb-0 text-dark">{selectedReport.status || 'No immediate action recorded'}</p>
                   </div>
+
                 </div>
               </div>
               <div className="modal-footer bg-light">
                 <button type="button" className="btn btn-secondary" onClick={() => setSelectedReport(null)}>Close</button>
-                <button type="button" className="btn btn-primary"><i className="bi bi-printer me-2"></i> Print Report</button>
+                <button type="button" className="btn btn-primary" onClick={() => window.print()}>
+                  <i className="bi bi-printer me-2"></i> Print Report
+                </button>
               </div>
             </div>
           </div>

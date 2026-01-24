@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import API_URL from '../config/api';
 
@@ -11,7 +11,7 @@ export default function SchedulePage() {
   const [selectedLocation, setSelectedLocation] = useState('85 Neeve');
   const [timelineDays, setTimelineDays] = useState(14);
 
-  const locations = ['85 Neeve', '87 Neeve', 'Willow Place', 'Outreach'];
+  const locations = ['85 Neeve', '87 Neeve', 'Willow Place', 'Outreach', 'Assisted Living', 'Seniors Assisted Living'];
 
   useEffect(() => {
     fetchScheduleData();
@@ -24,13 +24,49 @@ export default function SchedulePage() {
       const response = await axios.get(`${API_URL}/scheduled`, {
         params: { service: selectedLocation }
       });
-      setScheduleData(response.data.shift || []);
+      setScheduleData(response.data.daily_shift || []);
+      setScheduleData(response.data.daily_shift || []);
       setEmployees(response.data.employee || []);
+      const filteredEmployees = (response.data.employee || []).filter(emp =>
+        isEmployeeEligible(emp, selectedLocation)
+      );
+      setEmployees(filteredEmployees);
       setLoading(false);
     } catch (error) {
       console.error('Error fetching schedule:', error);
       setLoading(false);
     }
+  };
+  const isEmployeeEligible = (employee, selectedLocation) => {
+    if (!employee?.department || !selectedLocation) return false;
+
+    const department = employee.department;
+    const location = selectedLocation;
+
+    // NV → 85 / 87 Neeve
+    if (department.includes("NV") && (location.includes("85 Neeve") ||
+      location.includes("87 Neeve"))) {
+      return true;
+    }
+
+    // WP → Willow Place
+    if (department.includes("WP") && location.includes("Willow Place")) {
+      return true;
+    }
+
+    if ((department.includes("OR") || department.includes("Outreach")) && location.includes("Outreach")) {
+      return true;
+    }
+
+    // Assisted Living / Supported Living / ALS
+    if (["Assisted Living", "Supported Living", "ALS"].includes(department) && (
+      location.includes("Assisted Living") ||
+      location.includes("Supported Living")
+    )) {
+      return true;
+    }
+
+    return false;
   };
 
   const getDays = () => {
@@ -160,16 +196,15 @@ export default function SchedulePage() {
                             <div
                               className="mx-auto shadow-sm rounded-1 d-flex align-items-center justify-content-center fw-bold small text-dark"
                               style={{
-                                width: '80%',
-                                height: '70%',
+                                width: '100%',
+                                height: '80%',
                                 backgroundColor: '#ffffff', // White box for shift
-                                border: '1px solid #e5e7eb',
                                 cursor: 'pointer'
                               }}
                               title={shift.shift_start_time}
                             >
                               {/* Simply 'e' or time? User image showed 'e'. Let's show time for utility but keep simplistic look. */}
-                              {new Date(shift.shift_start_time).getHours()}:{new Date(shift.shift_start_time).getMinutes().toString().padStart(2, '0')}
+                              {shift.shift_start_time.toString().split('T')[1].slice(0, 5)}-{shift.shift_end_time.toString().split('T')[1].slice(0, 5)}
                             </div>
                           )}
                         </td>
