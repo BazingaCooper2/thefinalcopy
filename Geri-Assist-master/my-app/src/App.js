@@ -83,7 +83,7 @@ export const useAuth = () => useContext(AuthContext);
 
 /* ===================== PROTECTED ROUTE ===================== */
 
-function ProtectedRoute({ children, supervisorOnly = false }) {
+function ProtectedRoute({ children, supervisorOnly = false, adminOnly = false }) {
   const { user, isAuthenticated } = useAuth();
 
   const isSupervisor =
@@ -91,8 +91,11 @@ function ProtectedRoute({ children, supervisorOnly = false }) {
     user?.emp_role === 'MANAGER' ||
     user?.emp_role === 'ADMIN';
 
+  const isAdmin = user?.emp_role === 'ADMIN';
+
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   if (supervisorOnly && !isSupervisor) return <Navigate to="/" replace />;
+  if (adminOnly && !isAdmin) return <Navigate to="/" replace />;
 
   return children;
 }

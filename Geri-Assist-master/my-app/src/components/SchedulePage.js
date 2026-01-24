@@ -11,7 +11,7 @@ export default function SchedulePage() {
   const [selectedLocation, setSelectedLocation] = useState('85 Neeve');
   const [timelineDays, setTimelineDays] = useState(14);
 
-    const locations = ['85 Neeve', '87 Neeve', 'Willow Place', 'Outreach', 'Assisted Living', 'Seniors Assisted Living'];
+  const locations = ['85 Neeve', '87 Neeve', 'Willow Place', 'Outreach', 'Assisted Living', 'Seniors Assisted Living'];
 
   useEffect(() => {
     fetchScheduleData();
@@ -25,49 +25,49 @@ export default function SchedulePage() {
         params: { service: selectedLocation }
       });
       setScheduleData(response.data.daily_shift || []);
-        setScheduleData(response.data.daily_shift || []);
-        setEmployees(response.data.employee || []);
-        const filteredEmployees = (response.data.employee || []).filter(emp =>
-            isEmployeeEligible(emp, selectedLocation)
-        );
-        setEmployees(filteredEmployees);
+      setScheduleData(response.data.daily_shift || []);
+      setEmployees(response.data.employee || []);
+      const filteredEmployees = (response.data.employee || []).filter(emp =>
+        isEmployeeEligible(emp, selectedLocation)
+      );
+      setEmployees(filteredEmployees);
       setLoading(false);
     } catch (error) {
       console.error('Error fetching schedule:', error);
       setLoading(false);
     }
-    };
-    const isEmployeeEligible = (employee, selectedLocation) => {
-        if (!employee?.department || !selectedLocation) return false;
+  };
+  const isEmployeeEligible = (employee, selectedLocation) => {
+    if (!employee?.department || !selectedLocation) return false;
 
-        const department = employee.department;
-        const location = selectedLocation;
+    const department = employee.department;
+    const location = selectedLocation;
 
-        // NV → 85 / 87 Neeve
-        if (department.includes("NV") && (location.includes("85 Neeve") ||
-            location.includes("87 Neeve"))) {
-            return true;
-        }
+    // NV → 85 / 87 Neeve
+    if (department.includes("NV") && (location.includes("85 Neeve") ||
+      location.includes("87 Neeve"))) {
+      return true;
+    }
 
-        // WP → Willow Place
-        if (department.includes("WP") && location.includes("Willow Place")) {
-            return true;
-        }
+    // WP → Willow Place
+    if (department.includes("WP") && location.includes("Willow Place")) {
+      return true;
+    }
 
-        if ((department.includes("OR") || department.includes("Outreach")) && location.includes("Outreach")) {
-            return true;
-        }
+    if ((department.includes("OR") || department.includes("Outreach")) && location.includes("Outreach")) {
+      return true;
+    }
 
-        // Assisted Living / Supported Living / ALS
-        if (["Assisted Living", "Supported Living", "ALS"].includes(department) && (
-            location.includes("Assisted Living") ||
-            location.includes("Supported Living")
-        )) {
-            return true;
-        }
+    // Assisted Living / Supported Living / ALS
+    if (["Assisted Living", "Supported Living", "ALS"].includes(department) && (
+      location.includes("Assisted Living") ||
+      location.includes("Supported Living")
+    )) {
+      return true;
+    }
 
-        return false;
-    };
+    return false;
+  };
 
   const getDays = () => {
     const days = [];
@@ -204,7 +204,7 @@ export default function SchedulePage() {
                               title={shift.shift_start_time}
                             >
                               {/* Simply 'e' or time? User image showed 'e'. Let's show time for utility but keep simplistic look. */}
-                                      {shift.shift_start_time.toString().split(' ')[1]}-{shift.shift_end_time.toString().split(' ')[1]}
+                              {shift.shift_start_time.toString().split('T')[1].slice(0, 5)}-{shift.shift_end_time.toString().split('T')[1].slice(0, 5)}
                             </div>
                           )}
                         </td>

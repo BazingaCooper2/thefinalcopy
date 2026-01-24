@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useNavigate } from 'react-router-dom';
 import API_URL from '../config/api';
 
 const EmployeeDetails = () => {
@@ -12,77 +13,79 @@ const EmployeeDetails = () => {
 
     // Fetch employees from backend (Flask + Supabase)
     useEffect(() => {
-  fetch(`${API_URL}/employees`)
-    .then(res => res.json())
-    .then(data => {
-      const STATUS_MAP = {
-        WT: "Waiting",
-        TRN: "Training",
-        FLW: "Follow RTW",
-        LV: "On Leave",
-        IN: "Busy",
-        OUT: "Available",
-        OFR: "Offer Sent"
-      };
+        fetch(`${API_URL}/employees`)
+            .then(res => res.json())
+            .then(data => {
+                const STATUS_MAP = {
+                    WT: "Waiting",
+                    TRN: "Training",
+                    FLW: "Follow RTW",
+                    LV: "On Leave",
+                    IN: "Busy",
+                    OUT: "Available",
+                    OFR: "Offer Sent"
+                };
 
-      const enhancedData = (data || []).map(emp => {
-        const rawStatus = emp.status?.label || "WT";
+                const enhancedData = (data || []).map(emp => {
+                    const rawStatus = emp.status?.label || "WT";
 
-        return {
-          ...emp,
-          status_label: STATUS_MAP[rawStatus] || "Available",
+                    return {
+                        ...emp,
+                        status_label: STATUS_MAP[rawStatus] || "Available",
 
-          weekly_capacity:
-            emp.employmee_type === "Full Time"
-              ? 40
-              : emp.employmee_type === "Part Time"
-              ? 25
-              : 15,
+                        weekly_capacity:
+                            emp.employmee_type === "Full Time"
+                                ? 40
+                                : emp.employmee_type === "Part Time"
+                                    ? 25
+                                    : 15,
 
-          hours_worked: Math.floor(Math.random() * 40),
-          cross_training: emp.department || ["WP"],
-          offer_status: emp.offer_status || null,
-          employee_type: emp.employmee_type || "Full Time"
-        };
-      });
+                        hours_worked: Math.floor(Math.random() * 40),
+                        cross_training: emp.department || ["WP"],
+                        offer_status: emp.offer_status || null,
+                        employee_type: emp.employmee_type || "Full Time"
+                    };
+                });
 
-      setEmployees(enhancedData);
-      setFilteredEmployees(enhancedData);
-      setLoading(false);
-    })
-    .catch(err => {
-      console.error("Error fetching employees:", err);
-      setLoading(false);
-    });
-}, []);
+                setEmployees(enhancedData);
+                setFilteredEmployees(enhancedData);
+                setLoading(false);
+            })
+            .catch(err => {
+                console.error("Error fetching employees:", err);
+                setLoading(false);
+            });
+    }, []);
 
 
     // Filter employees based on search
     useEffect(() => {
-  let result = employees;
+        let result = employees;
 
-  if (search.trim() !== "") {
-    const q = search.toLowerCase();
-    result = result.filter(
-      emp =>
-        emp.first_name?.toLowerCase().includes(q) ||
-        emp.last_name?.toLowerCase().includes(q) ||
-        emp.emp_id?.toString().includes(q)
-    );
-  }
+        if (search.trim() !== "") {
+            const q = search.toLowerCase();
+            result = result.filter(
+                emp =>
+                    emp.first_name?.toLowerCase().includes(q) ||
+                    emp.last_name?.toLowerCase().includes(q) ||
+                    emp.emp_id?.toString().includes(q)
+            );
+        }
 
-  if (typeFilter !== "All") {
-    result = result.filter(
-      emp => emp.employee_type === typeFilter
-    );
-  }
+        if (typeFilter !== "All") {
+            result = result.filter(
+                emp => emp.employee_type === typeFilter
+            );
+        }
 
-  setFilteredEmployees(result);
-}, [search, typeFilter, employees]);
+        setFilteredEmployees(result);
+    }, [search, typeFilter, employees]);
 
+
+    const navigate = useNavigate();
 
     const handleView = (emp_id) => {
-        window.open(`/employee/${emp_id}`, "_blank");
+        navigate(`/employee/${emp_id}`);
     };
 
     const handleLeaveRequest = (emp) => {
@@ -267,14 +270,14 @@ const EmployeeDetails = () => {
                     <div className="col-md-4">
                         <div className="d-flex gap-2">
                             <select
-                            className="input-modern"
-                            value={typeFilter}
-                            onChange={(e) => setTypeFilter(e.target.value)}
+                                className="input-modern"
+                                value={typeFilter}
+                                onChange={(e) => setTypeFilter(e.target.value)}
                             >
-                            <option value="All">All Employees</option>
-                            <option value="Full Time">Full Time</option>
-                            <option value="Part Time">Part Time</option>
-                            <option value="Casual">Casual</option>
+                                <option value="All">All Employees</option>
+                                <option value="Full Time">Full Time</option>
+                                <option value="Part Time">Part Time</option>
+                                <option value="Casual">Casual</option>
                             </select>
 
                         </div>

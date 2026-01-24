@@ -4,6 +4,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from flask_cors import CORS
 from datetime import timedelta, datetime
 from datetime import date
+from datetime import timezone
 import os
 import smtplib
 from email.mime.text import MIMEText
@@ -126,13 +127,13 @@ def edit_schedule():
     # 1. Fetch client
     client = supabase.table("client").select("*").eq("client_id", data['client_id']).execute()
 
-    s_time = datetime.strptime(data['shift_start_time'], "%Y-%m-%dT%H:%M:%S")
-    e_time = datetime.strptime(data['shift_end_time'], "%Y-%m-%dT%H:%M:%S")
+    s_time = datetime.strptime(data['shift_start_time'], "%Y-%m-%dT%H:%M:%SZ")
+    e_time = datetime.strptime(data['shift_end_time'], "%Y-%m-%dT%H:%M:%SZ")
     print(e_time)
     # 2. Update shift times
     supabase.table("shift").update({
-        "shift_start_time": str(s_time)[:19] + "Z",
-        "shift_end_time": str(e_time)[:19] + "Z"
+        "shift_start_time": str(s_time).replace(' ','T')[:19] + "Z",
+        "shift_end_time": str(e_time).replace(' ','T')[:19] + "Z"
     }).eq("shift_id", s_id).execute()
 
     # 3. Call Postgres function for daily_shift updates
@@ -1317,7 +1318,7 @@ def get_tasks():
         if shift_id:
             query = query.eq("shift_id", int(shift_id))
 
-        res = query.order("task_created", desc=True).execute()
+        res = query.order("task_id", desc=True).execute()
 
         return jsonify({
             "success": True,
@@ -1330,6 +1331,60 @@ def get_tasks():
             "success": False,
             "message": str(e)
         }), 500
+
+@app.route("/task-update", methods=["PUT"])
+def task_update():
+    try:
+        data = request.json
+        task_id = data.get("task_id")
+        details = data.get("details")
+
+        if not task_id or not details:
+            return jsonify({
+                "success": False,
+                "message": "task_id and details are required"
+            }), 400
+
+        res = supabase.table("tasks").update({
+            "details": details
+        }).eq("task_id", task_id).execute()
+
+        return jsonify({
+            "success": True,
+            "message": "Task updated successfully",
+            "data": res.data
+        }), 200
+
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "message": str(e)
+        }), 500
+
+@app.route("/task-delete", methods=["DELETE"])
+def task_delete():
+    try:
+        task_id = request.args.get("task_id")
+
+        if not task_id:
+            return jsonify({
+                "success": False,
+                "message": "task_id is required"
+            }), 400
+
+        supabase.table("tasks").delete().eq("task_id", task_id).execute()
+
+        return jsonify({
+            "success": True,
+            "message": "Task deleted successfully"
+        }), 200
+
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "message": str(e)
+        }), 500
+
 
 @app.route("/task-complete", methods=["POST"])
 def task_complete():
@@ -1528,6 +1583,14 @@ def employee_status_stats():
 def get_injury_reports():
     response = supabase.table("injury_reports").select("*").execute()
     return jsonify(response.data)
+
+@app.route("/injury_reports/<int:id>", methods=["DELETE"])
+def delete_injury_report(id):
+    try:
+        supabase.table("injury_reports").delete().eq("id", id).execute()
+        return jsonify({"success": True, "message": "Report deleted successfully"}), 200
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
 
 
 SUPERVISOR_EMAIL = "hemangee4700@gmail.com"
@@ -2158,8 +2221,8 @@ def add_client_shift():
         supabase.table("shift").insert({
             "client_id": data["client_id"],
             "emp_id":data["emp_id"],
-            "shift_start_time": data["shift_start_time"][:19] + "Z",
-            "shift_end_time": data["shift_end_time"][:19] + "Z",
+            "shift_start_time": data["shift_start_time"].replace(' ','T')[:19] + "Z",
+            "shift_end_time": data["shift_end_time"].replace(' ','T')[:19] + "Z",
             "date":data["shift_date"],
             "shift_status": data['shift_status'],
         }).execute()
@@ -2176,8 +2239,8 @@ def add_employee_shift():
         supabase.table("daily_shift").insert({
             "emp_id": data["emp_id"],
             "shift_date": data["shift_date"],
-            "shift_start_time": data["shift_start_time"],
-            "shift_end_time": data["shift_end_time"],
+            "shift_start_time": data["shift_start_time"].replace(' ','T')+"Z",
+            "shift_end_time": data["shift_end_time"].replace(' ','T')+"Z",
             "shift_type": data["shift_type"]
         }).execute()
 
@@ -2536,9 +2599,24 @@ def masterSchedule(service: str):
                 continue
             
             # 4️⃣ Apply shift notation
-            shift_date = datetime.fromisoformat(shift["shift_date"])
-            start_time = datetime.fromisoformat(shift["shift_start_time"])
-            end_time = datetime.fromisoformat(shift["shift_end_time"])
+            # shift_date = datetime.fromisoformat(shift["shift_date"])
+            # start_time = datetime.fromisoformat(shift["shift_start_time"])
+            # end_time = datetime.fromisoformat(shift["shift_end_time"])
+            shift_date = datetime.strptime(
+                shift["shift_date"],
+                "%Y-%m-%d"
+            ).replace(tzinfo=timezone.utc)
+
+            # Parse start & end times (ISO UTC)
+            start_time = datetime.strptime(
+                shift["shift_start_time"],
+                "%Y-%m-%dT%H:%M:%SZ"
+            ).replace(tzinfo=timezone.utc)
+
+            end_time = datetime.strptime(
+                shift["shift_end_time"],
+                "%Y-%m-%dT%H:%M:%SZ"
+            ).replace(tzinfo=timezone.utc)
 
             if service == "Outreach":
                 time_code = f"{start_time.strftime('%H:%M:%S')}-{end_time.strftime('%H:%M:%S')}"
@@ -2646,6 +2724,103 @@ def get_6_week_dates(start_date: date):
     return [start_date + timedelta(days=i) for i in range(42)]
 
 @app.route("/update_master_shift", methods=["POST"])
+# def update_master_shift():
+#     try:
+#         data = request.get_json()
+
+#         emp_id = data.get("emp_id")
+#         shift_type = data.get("shift_type")
+#         shift_date = data.get("shift_date")
+#         start_time = data.get("shift_start_time")
+#         end_time = data.get("shift_end_time")
+#         prev_type = data.get("type")
+
+#         if not emp_id or not shift_type or not shift_date:
+#             return jsonify({"error": "Missing required fields"}), 400
+
+#         start_dt = f"{shift_date} {start_time}"
+#         end_dt = f"{shift_date} {end_time}"
+
+#         DAILY_SHIFT_TYPES = {
+#             "flw-rtw",
+#             "flw-training",
+#             "gil",
+#             "float",
+#             "open"
+#         }
+
+#         LEAVE_TYPES = {
+#             "leave",
+#             "vacation",
+#             "sick",
+#             "bereavement",
+#             "unavailable"
+#         }
+
+#         if prev_type == "open":
+
+#             # 🟢 DAILY SHIFT
+#             if shift_type in DAILY_SHIFT_TYPES:
+#                 supabase.table("daily_shift").insert({
+#                     "emp_id": emp_id,
+#                     "shift_date": shift_date,
+#                     "shift_start_time": f"{shift_date}T{start_time}:00Z",
+#                     "shift_end_time": f"{shift_date}T{end_time}:00Z",
+#                     "shift_type": shift_type
+#                 }).execute()
+
+#             # 🔴 LEAVE
+#             elif shift_type in LEAVE_TYPES:
+#                 supabase.table("leaves").insert({
+#                     "emp_id": emp_id,
+#                     "leave_start_date": shift_date,
+#                     "leave_end_date": shift_date,
+#                     "leave_start_time": f"{shift_date}T{start_time}:00Z",
+#                     "leave_end_time": f"{shift_date}T{end_time}:00Z",
+#                     "leave_type": shift_type
+#                 }).execute()
+#         else:
+#             supabase.table("daily_shift") \
+#                 .delete() \
+#                 .eq("emp_id", emp_id) \
+#                 .eq("shift_date", shift_date) \
+#                 .execute()
+
+#             supabase.table("leaves") \
+#                 .delete() \
+#                 .eq("emp_id", emp_id) \
+#                 .eq("leave_start_date", shift_date) \
+#                 .execute()
+
+#             # Then insert updated version
+#             if shift_type in LEAVE_TYPES:
+#                 supabase.table("leaves").insert({
+#                     "emp_id": emp_id,
+#                     "leave_start_date": shift_date,
+#                     "leave_end_date": shift_date,
+#                     "leave_start_time": start_time,
+#                     "leave_end_time": end_time,
+#                     "leave_type": shift_type
+#                 }).execute()
+#             else:
+#                 supabase.table("daily_shift").insert({
+#                     "emp_id": emp_id,
+#                     "shift_date": shift_date,
+#                     "shift_start_time": f"{shift_date}T{start_time}:00Z",
+#                     "shift_end_time": f"{shift_date}T{end_time}:00Z",
+#                     "shift_type": shift_type
+#                 }).execute()
+
+#             return jsonify({"message": "Existing shift updated"}), 200
+        
+
+#         return jsonify({"message": "Shift updated successfully"}), 200
+
+#     except Exception as e:
+#         print("ERROR:", e)
+#         return jsonify({"error": str(e)}), 500
+
+
 def update_master_shift():
     try:
         data = request.get_json()
@@ -2686,8 +2861,8 @@ def update_master_shift():
                 supabase.table("daily_shift").insert({
                     "emp_id": emp_id,
                     "shift_date": shift_date,
-                    "shift_start_time": f"{shift_date}T{start_time}:00Z",
-                    "shift_end_time": f"{shift_date}T{end_time}:00Z",
+                    "shift_start_time": f"{start_time.replace(' ','T')}Z",
+                    "shift_end_time": f"{end_time.replace(' ','T')}Z",
                     "shift_type": shift_type
                 }).execute()
 
@@ -2697,8 +2872,8 @@ def update_master_shift():
                     "emp_id": emp_id,
                     "leave_start_date": shift_date,
                     "leave_end_date": shift_date,
-                    "leave_start_time": f"{shift_date}T{start_time}:00Z",
-                    "leave_end_time": f"{shift_date}T{end_time}:00Z",
+                    "leave_start_time": start_time,
+                    "leave_end_time": end_time,
                     "leave_type": shift_type
                 }).execute()
         else:
@@ -2728,8 +2903,8 @@ def update_master_shift():
                 supabase.table("daily_shift").insert({
                     "emp_id": emp_id,
                     "shift_date": shift_date,
-                    "shift_start_time": f"{shift_date}T{start_time}:00Z",
-                    "shift_end_time": f"{shift_date}T{end_time}:00Z",
+                    "shift_start_time": f"{start_time.replace(' ','T')}Z",
+                    "shift_end_time": f"{end_time.replace(' ','T')}Z",
                     "shift_type": shift_type
                 }).execute()
 

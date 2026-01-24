@@ -65,11 +65,11 @@ export default function Sidebar() {
                 { label: 'Fill Report', path: '/fillInjuryReport' },
             ],
         },
-        {
-            icon: 'bi-gear-fill',
-            label: 'Settings',
-            path: '/settings',
-        },
+        // {
+        //     icon: 'bi-gear-fill',
+        //     label: 'Settings',
+        //     path: '/settings',
+        // },
     ];
 
     return (
