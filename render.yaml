@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: gerri-backend
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn schedule:app --bind 0.0.0.0:$PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11"
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+
+  - type: web
+    name: gerri-frontend
+    runtime: static
+    rootDir: Geri-Assist-master/my-app
+    buildCommand: npm install && npm run build
+    staticPublishPath: build
+    envVars:
+      - key: REACT_APP_API_URL
+        value: https://thefinalcopy-3.onrender.com
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
