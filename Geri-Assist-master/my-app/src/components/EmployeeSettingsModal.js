@@ -1,12 +1,13 @@
 import React, { useState } from "react";
 import { Modal, Button, Form } from "react-bootstrap";
+import API_URL from '../config/api';
 
 export default function EmployeeSettingsModal({ show, onHide, settingKey, settingLabel, currentValue, empId, onUpdated }) {
     const [value, setValue] = useState(currentValue);
     console.log(empId);
     const saveUpdate = async () => {
         try {
-            const res = await fetch(`http://127.0.0.1:5000/update_employee_settings/${empId}`, {
+            const res = await fetch(`${API_URL}/update_employee_settings/${empId}`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ [settingKey]: value }),

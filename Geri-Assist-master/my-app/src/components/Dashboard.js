@@ -1,26 +1,27 @@
-import React, { useEffect, useState} from 'react';
+import React, { useEffect, useState } from 'react';
 import DashboardCard from './DashboardCard';
 import DashboardGraphs from './DashboardGraphs';
 import MapSection from './MapSection';
 import CalendarSchedule from './CalendarSchedule';
+import API_URL from '../config/api';
 
 export default function Dashboard() {
-    const [kpiData, setKpiData] = useState([]);
-    
-    useEffect(() => {
-       
-        const fetchKpiData = async () => {
-            try {
-                const res = await fetch("http://127.0.0.1:5000/dashboard/stats");
-                const data = await res.json();
-                setKpiData(data);
-            } catch (error) {
-                console.error("Failed to fetch KPI data:", error);
-            }
-        };
+  const [kpiData, setKpiData] = useState([]);
 
-        fetchKpiData();
-    }, []);
+  useEffect(() => {
+
+    const fetchKpiData = async () => {
+      try {
+        const res = await fetch(`${API_URL}/dashboard/stats`);
+        const data = await res.json();
+        setKpiData(data);
+      } catch (error) {
+        console.error("Failed to fetch KPI data:", error);
+      }
+    };
+
+    fetchKpiData();
+  }, []);
 
   return (
     <div className="container-fluid p-4 animate-fadeIn" style={{ background: 'linear-gradient(135deg, #f5f7fa 0%, #e9ecef 100%)', minHeight: 'calc(100vh - 60px)' }}>

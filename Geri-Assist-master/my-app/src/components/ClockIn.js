@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { getEmpId } from "../utils/emp";
+import API_URL from '../config/api';
 
 
 export default function ClockIn() {
@@ -22,7 +23,7 @@ export default function ClockIn() {
     async function init() {
         try {
             const res = await fetch(
-                `http://127.0.0.1:5000/employee/${empId}/clock-status`
+                `${API_URL}/employee/${empId}/clock-status`
             );
             const data = await res.json();
 
@@ -41,7 +42,7 @@ export default function ClockIn() {
 
     async function fetchTasks(shiftId) {
         const res = await fetch(
-            `http://127.0.0.1:5000/tasks?shift_id=${shiftId}`
+            `${API_URL}/tasks?shift_id=${shiftId}`
         );
         const data = await res.json();
         if (res.ok && data.success) setTasks(data.tasks);
@@ -55,7 +56,7 @@ export default function ClockIn() {
         try {
             // 1️⃣ Get today’s assigned shift
             const sRes = await fetch(
-                `http://127.0.0.1:5000/employee/${empId}/live-shift`
+                `${API_URL}/employee/${empId}/live-shift`
             );
             const sData = await sRes.json();
 
@@ -65,7 +66,7 @@ export default function ClockIn() {
 
             // 2️⃣ Clock it in
             const clockRes = await fetch(
-                "http://127.0.0.1:5000/shift/clock-in",
+                `${API_URL}/shift/clock-in`,
                 {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
@@ -103,7 +104,7 @@ export default function ClockIn() {
 
         try {
             const res = await fetch(
-                "http://127.0.0.1:5000/task/complete",
+                `${API_URL}/task/complete`,
                 {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
@@ -134,7 +135,7 @@ export default function ClockIn() {
             }
 
             const res = await fetch(
-                "http://127.0.0.1:5000/shift/clock-out",
+                `${API_URL}/shift/clock-out`,
                 {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },

@@ -3,6 +3,7 @@ import ServiceSidebar from "./ServiceSidebar";
 import ScheduleGrid from "./ScheduleGrid";
 import { fetchServiceSchedule } from "../services/api";
 import ShiftEditModal from "./ShiftEditModal";
+import API_URL from '../config/api';
 
 export default function MasterSchedule() {
     const [service, setService] = useState("85 Neeve");
@@ -43,7 +44,7 @@ export default function MasterSchedule() {
 
             // We need to determine if we are updating `daily_shift` (for master schedule usually)
             // The table key might vary but let's assume we send to a new endpoint
-            const res = await fetch("http://127.0.0.1:5000/update_master_shift", {
+            const res = await fetch(`${API_URL}/update_master_shift`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(updatedShift)

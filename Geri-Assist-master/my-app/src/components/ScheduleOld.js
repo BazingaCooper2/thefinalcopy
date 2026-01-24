@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import './styledashboard.css';
+import API_URL from '../config/api';
 
 export default function SchedulePage() {
   const [scheduleData, setScheduleData] = useState(null);
@@ -11,7 +12,7 @@ export default function SchedulePage() {
   useEffect(() => {
     const fetchSchedule = async () => {
       try {
-        const response = await fetch(`http://127.0.0.1:5000/`); // Replace with your API endpoint
+        const response = await fetch(`${API_URL}/`); // Replace with your API endpoint
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
@@ -38,7 +39,7 @@ export default function SchedulePage() {
     </div>
   );*/
   const hours = Array.from({ length: 14 }, (_, i) => 6 + i); // 06 to 19
-  
+
   const employees = ['Lincoln Bartlett', 'Amelia Harper', 'Stu Pizaro', 'Lucy Ball'];
   const timeSlots = ['08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00'];
   const groupedStartTimes = scheduleData.shift.reduce((acc, shift) => {
@@ -57,18 +58,18 @@ export default function SchedulePage() {
     if (!acc[empId]) {
       acc[empId] = [];
     }
-    acc[empId].push(endTime-startTime);
+    acc[empId].push(endTime - startTime);
     return acc;
   }, {});
 
 
-const appointments = [
-  { employee: 'Lincoln Bartlett', time: '09:00', duration: 2, title: 'Andrew Glover', type: 'Hospital', color: 'bg-primary' },
-  { employee: 'Amelia Harper', time: '09:00', duration: 1, title: 'Addison Davis', type: 'Hospital', color: 'bg-danger' },
-  { employee: 'Stu Pizaro', time: '09:00', duration: 2, title: 'Follow-up Checkup', type: 'Medical', color: 'bg-warning' },
-  { employee: 'Lucy Ball', time: '09:00', duration: 1, title: 'Isabella Carter', type: 'Home', color: 'bg-danger' },
-  { employee: 'Lincoln Bartlett', time: '12:00', duration: 2, title: 'Mark Oliver', type: 'Hospital', color: 'bg-success' },
-];
+  const appointments = [
+    { employee: 'Lincoln Bartlett', time: '09:00', duration: 2, title: 'Andrew Glover', type: 'Hospital', color: 'bg-primary' },
+    { employee: 'Amelia Harper', time: '09:00', duration: 1, title: 'Addison Davis', type: 'Hospital', color: 'bg-danger' },
+    { employee: 'Stu Pizaro', time: '09:00', duration: 2, title: 'Follow-up Checkup', type: 'Medical', color: 'bg-warning' },
+    { employee: 'Lucy Ball', time: '09:00', duration: 1, title: 'Isabella Carter', type: 'Home', color: 'bg-danger' },
+    { employee: 'Lincoln Bartlett', time: '12:00', duration: 2, title: 'Mark Oliver', type: 'Hospital', color: 'bg-success' },
+  ];
 
   return (
     <div className="container-fluid">
@@ -100,65 +101,65 @@ const appointments = [
           <div className='header-row'>
             <div className="header-cell employee-label">Employee</div>
             {hours.map((hour) => (
-              <div key={hour} className="header-cell text-center">{hour.toString().padStart(2, '0')+":00"}</div>
+              <div key={hour} className="header-cell text-center">{hour.toString().padStart(2, '0') + ":00"}</div>
             ))}
           </div>
-            {scheduleData.employee.map((emp, rowIndex) => (
-              <div key={rowIndex} className='row-body'>
-                <div className='cell employee-cell'>{emp.name}</div>
-                {hours.map((hour, colIndex) => {
-                  const clientShift = groupedStartTimes[emp.emp_id].sort();
-                  const appt = scheduleData.shift.find(s => (s.emp_id === emp.emp_id && (
-                    (hour == s.shift_start_time.split(" ")[4].split(":")[0] ) )))
-                    const s_dur = scheduleData.daily_shift.find(d => (d.emp_id === emp.emp_id && (
-                    (hour == d.shift_start_time.split(" ")[4].split(":")[0] ) )))
-                      //employee tile
-                      // if(s_dur){
-                      //   const startHour = parseInt(s_dur.shift_start_time.split(" ")[4].split(":")[0]);
-                      //   const endHour = parseInt(s_dur.shift_end_time.split(" ")[4].split(":")[0]);
-                      //   const startMinute = s_dur.shift_start_time.split(" ")[4].split(":")[1];
-                      //   const endMinute = s_dur.shift_end_time.split(" ")[4].split(":")[1];
-                      //   const duration = endHour - startHour;
+          {scheduleData.employee.map((emp, rowIndex) => (
+            <div key={rowIndex} className='row-body'>
+              <div className='cell employee-cell'>{emp.name}</div>
+              {hours.map((hour, colIndex) => {
+                const clientShift = groupedStartTimes[emp.emp_id].sort();
+                const appt = scheduleData.shift.find(s => (s.emp_id === emp.emp_id && (
+                  (hour == s.shift_start_time.split(" ")[4].split(":")[0]))))
+                const s_dur = scheduleData.daily_shift.find(d => (d.emp_id === emp.emp_id && (
+                  (hour == d.shift_start_time.split(" ")[4].split(":")[0]))))
+                //employee tile
+                // if(s_dur){
+                //   const startHour = parseInt(s_dur.shift_start_time.split(" ")[4].split(":")[0]);
+                //   const endHour = parseInt(s_dur.shift_end_time.split(" ")[4].split(":")[0]);
+                //   const startMinute = s_dur.shift_start_time.split(" ")[4].split(":")[1];
+                //   const endMinute = s_dur.shift_end_time.split(" ")[4].split(":")[1];
+                //   const duration = endHour - startHour;
 
-                      //   const client = scheduleData.client.find(cl => cl.client_id === appt.client_id);
-                      //   return (
-                      //     <div key={colIndex}
-                      //       className={`cell appointment bg-primary`}
-                      //       style={{ gridColumn: `span ${duration}` }}>
-                      //         {startHour}:{startMinute} - {endHour}:{endMinute}<br />
-                      //         {client && <div>{client.address_line1}</div>}
-                      //         {/* <div>{groupedStartTimes[emp.emp_id].sort()}</div> */}
-                      //     </div>
-                      //   );
-                      // }
-                      // if(!s_dur){
-                      //   return (<div key={colIndex} className="cell empty-cell"></div>);
-                      // }
-                      //Client tile
-                      if (appt){
-                        const startHour = parseInt(appt.shift_start_time.split(" ")[4].split(":")[0]);
-                        const endHour = parseInt(appt.shift_end_time.split(" ")[4].split(":")[0]);
-                        const startMinute = appt.shift_start_time.split(" ")[4].split(":")[1];
-                        const endMinute = appt.shift_end_time.split(" ")[4].split(":")[1];
-                        const duration = endHour - startHour;
+                //   const client = scheduleData.client.find(cl => cl.client_id === appt.client_id);
+                //   return (
+                //     <div key={colIndex}
+                //       className={`cell appointment bg-primary`}
+                //       style={{ gridColumn: `span ${duration}` }}>
+                //         {startHour}:{startMinute} - {endHour}:{endMinute}<br />
+                //         {client && <div>{client.address_line1}</div>}
+                //         {/* <div>{groupedStartTimes[emp.emp_id].sort()}</div> */}
+                //     </div>
+                //   );
+                // }
+                // if(!s_dur){
+                //   return (<div key={colIndex} className="cell empty-cell"></div>);
+                // }
+                //Client tile
+                if (appt) {
+                  const startHour = parseInt(appt.shift_start_time.split(" ")[4].split(":")[0]);
+                  const endHour = parseInt(appt.shift_end_time.split(" ")[4].split(":")[0]);
+                  const startMinute = appt.shift_start_time.split(" ")[4].split(":")[1];
+                  const endMinute = appt.shift_end_time.split(" ")[4].split(":")[1];
+                  const duration = endHour - startHour;
 
-                        const client = scheduleData.client.find(cl => cl.client_id === appt.client_id);
-                        return (
-                          <div key={colIndex}
-                            className={`cell appointment bg-primary`}
-                            style={{ gridColumn: `span ${duration}` }}>
-                              {startHour}:{startMinute} - {endHour}:{endMinute}<br />
-                              {client && <div>{client.address_line1}</div>}
-                              {/* <div>{groupedStartTimes[emp.emp_id].sort()}</div> */}
-                          </div>
-                        );
-                      }
-                      if(!appt){
-                        return (<div key={colIndex} className="cell empty-cell"></div>);
-                      }
-                })}
-                </div>
-              ))}
+                  const client = scheduleData.client.find(cl => cl.client_id === appt.client_id);
+                  return (
+                    <div key={colIndex}
+                      className={`cell appointment bg-primary`}
+                      style={{ gridColumn: `span ${duration}` }}>
+                      {startHour}:{startMinute} - {endHour}:{endMinute}<br />
+                      {client && <div>{client.address_line1}</div>}
+                      {/* <div>{groupedStartTimes[emp.emp_id].sort()}</div> */}
+                    </div>
+                  );
+                }
+                if (!appt) {
+                  return (<div key={colIndex} className="cell empty-cell"></div>);
+                }
+              })}
+            </div>
+          ))}
         </div>
       </div>
       {/*scheduleData.client.map(emp => <div>{emp.name}</div> )*/}

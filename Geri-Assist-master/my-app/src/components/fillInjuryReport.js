@@ -1,6 +1,7 @@
 import React, { useState, useRef } from "react";
 import "bootstrap/dist/css/bootstrap.min.css";
 import SignatureCanvas from 'react-signature-canvas';
+import API_URL from '../config/api';
 
 const UnifiedReportForm = () => {
   const [reportType, setReportType] = useState("hazard"); // hazard, incident, injury
@@ -14,7 +15,7 @@ const UnifiedReportForm = () => {
       // In a real app, this might go to different endpoints or have a 'type' field
       const payload = { ...formData, report_type: reportType };
 
-      const response = await fetch("http://127.0.0.1:5000/send_injury_report", {
+      const response = await fetch(`${API_URL}/send_injury_report`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),

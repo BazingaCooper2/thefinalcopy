@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from "react";
+import { useNavigate } from 'react-router-dom';
+import API_URL from '../config/api';
 
 const EmployeeDetails = () => {
     const [employees, setEmployees] = useState([]);
@@ -7,51 +9,83 @@ const EmployeeDetails = () => {
     const [loading, setLoading] = useState(true);
     const [showLeaveModal, setShowLeaveModal] = useState(false);
     const [selectedEmployee, setSelectedEmployee] = useState(null);
+    const [typeFilter, setTypeFilter] = useState("All");
 
     // Fetch employees from backend (Flask + Supabase)
     useEffect(() => {
-        fetch("http://127.0.0.1:5000/employees")
-            .then((res) => res.json())
-            .then((data) => {
-                // Enhance employee data with mock capacity info
-                const enhancedData = (data || []).map(emp => ({
-                    ...emp,
-                    weekly_capacity: emp.employee_type === 'Full-time' ? 40 : emp.employee_type === 'Part-time' ? 25 : 15,
-                    hours_worked: Math.floor(Math.random() * 40),
-                    cross_training: emp.cross_training || ['WP'], // Mock data
-                    offer_status: emp.offer_status || null,
-                    employee_type: emp.employee_type || 'Full-time'
-                }));
+        fetch(`${API_URL}/employees`)
+            .then(res => res.json())
+            .then(data => {
+                const STATUS_MAP = {
+                    WT: "Waiting",
+                    TRN: "Training",
+                    FLW: "Follow RTW",
+                    LV: "On Leave",
+                    IN: "Busy",
+                    OUT: "Available",
+                    OFR: "Offer Sent"
+                };
+
+                const enhancedData = (data || []).map(emp => {
+                    const rawStatus = emp.status?.label || "WT";
+
+                    return {
+                        ...emp,
+                        status_label: STATUS_MAP[rawStatus] || "Available",
+
+                        weekly_capacity:
+                            emp.employmee_type === "Full Time"
+                                ? 40
+                                : emp.employmee_type === "Part Time"
+                                    ? 25
+                                    : 15,
+
+                        hours_worked: Math.floor(Math.random() * 40),
+                        cross_training: emp.department || ["WP"],
+                        offer_status: emp.offer_status || null,
+                        employee_type: emp.employmee_type || "Full Time"
+                    };
+                });
+
                 setEmployees(enhancedData);
                 setFilteredEmployees(enhancedData);
                 setLoading(false);
             })
-            .catch((err) => {
+            .catch(err => {
                 console.error("Error fetching employees:", err);
                 setLoading(false);
             });
     }, []);
 
+
     // Filter employees based on search
     useEffect(() => {
-        if (search.trim() === "") {
-            setFilteredEmployees(employees);
-        } else {
-            setFilteredEmployees(
-                employees.filter(
-                    (emp) =>
-                        (emp.first_name &&
-                            emp.first_name.toLowerCase().includes(search.toLowerCase())) ||
-                        (emp.last_name &&
-                            emp.last_name.toLowerCase().includes(search.toLowerCase())) ||
-                        (emp.emp_id && emp.emp_id.toString().includes(search))
-                )
+        let result = employees;
+
+        if (search.trim() !== "") {
+            const q = search.toLowerCase();
+            result = result.filter(
+                emp =>
+                    emp.first_name?.toLowerCase().includes(q) ||
+                    emp.last_name?.toLowerCase().includes(q) ||
+                    emp.emp_id?.toString().includes(q)
             );
         }
-    }, [search, employees]);
+
+        if (typeFilter !== "All") {
+            result = result.filter(
+                emp => emp.employee_type === typeFilter
+            );
+        }
+
+        setFilteredEmployees(result);
+    }, [search, typeFilter, employees]);
+
+
+    const navigate = useNavigate();
 
     const handleView = (emp_id) => {
-        window.open(`/employee/${emp_id}`, "_blank");
+        navigate(`/employee/${emp_id}`);
     };
 
     const handleLeaveRequest = (emp) => {
@@ -235,12 +269,17 @@ const EmployeeDetails = () => {
                     </div>
                     <div className="col-md-4">
                         <div className="d-flex gap-2">
-                            <select className="input-modern">
-                                <option>All Employees</option>
-                                <option>Full-time</option>
-                                <option>Part-time</option>
-                                <option>Casual</option>
+                            <select
+                                className="input-modern"
+                                value={typeFilter}
+                                onChange={(e) => setTypeFilter(e.target.value)}
+                            >
+                                <option value="All">All Employees</option>
+                                <option value="Full Time">Full Time</option>
+                                <option value="Part Time">Part Time</option>
+                                <option value="Casual">Casual</option>
                             </select>
+
                         </div>
                     </div>
                 </div>
@@ -314,7 +353,7 @@ const EmployeeDetails = () => {
                                             {getCrossTrainingBadges(emp.cross_training || ['WP'])}
                                         </td>
                                         <td>
-                                            {getStatusBadge(emp.status_label || emp.status, emp.offer_status)}
+                                            {getStatusBadge(emp.status_label, emp.offer_status)}
                                         </td>
                                         <td>
                                             {getCapacityBar(emp.hours_worked || 0, emp.weekly_capacity || 40)}
@@ -440,7 +479,7 @@ function LeaveRequestModal({ employee, employees, onClose }) {
                 end_time: formData.all_day ? "23:59:00" : formData.end_time
             };
 
-            const response = await fetch("http://127.0.0.1:5000/add_unavailability", {
+            const response = await fetch(`${API_URL}/add_unavailability`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(body),

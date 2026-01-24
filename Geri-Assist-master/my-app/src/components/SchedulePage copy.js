@@ -6,6 +6,7 @@ import 'bootstrap/dist/css/bootstrap.min.css';
 import './styledashboard.css';
 import Modal from './editModal.js';
 import { Form, Button, Row, Col, InputGroup } from 'react-bootstrap';
+import API_URL from '../config/api';
 
 const toMinutesOfDay = (timeStr) => {
   // timeStr expected like "YYYY-MM-DD HH:MM:SS" or "HH:MM:SS"
@@ -31,15 +32,15 @@ export default function SchedulePage() {
   const [shift_ptr_end, setShiftptrend] = useState(null);
   const [message, setMessage] = useState("");
   const [unassignedPresent, setPresent] = useState(false);
-    const [filterEmployees, setFilterEmployees] = useState("");
-    const [filterClientGroup, setFilterClientGroup] = useState("");
-    const [filterServiceDept, setFilterServiceDept] = useState("");
-    const [filterSaved, setFilterSaved] = useState("");
+  const [filterEmployees, setFilterEmployees] = useState("");
+  const [filterClientGroup, setFilterClientGroup] = useState("");
+  const [filterServiceDept, setFilterServiceDept] = useState("");
+  const [filterSaved, setFilterSaved] = useState("");
   const [formData, setFormData] = useState({
     shift_id: "",
     client_id: "",
     emp_id: "",
-    serviceType:"",
+    serviceType: "",
     shift_start_time: "",
     shift_end_time: "",
     shift_status: "",
@@ -52,8 +53,10 @@ export default function SchedulePage() {
     Forms: "",
   });
 
-  const [collapsed, setCollapsed] = useState({"Outreach":false,"Willow Place":false,
-    "87 Neeve":false, "85 Neeve":false});
+  const [collapsed, setCollapsed] = useState({
+    "Outreach": false, "Willow Place": false,
+    "87 Neeve": false, "85 Neeve": false
+  });
 
   const toggleCollapse = (type) => {
     setCollapsed((prev) => ({
@@ -94,18 +97,18 @@ export default function SchedulePage() {
       if (empl) {
         setEmpl(empl);
       }
-      if (shift_ptr.shift_id){
+      if (shift_ptr.shift_id) {
         setShift(shift_ptr.shift_id);
       }
       setFormData((prev) => ({
-          ...prev,
-          serviceType: shift_ptr.client.service_type,
-        }));
+        ...prev,
+        serviceType: shift_ptr.client.service_type,
+      }));
       if (shift_ptr.shift_start_time) {
         // console.log(shift_ptr.shift_start_time)
         const [year, month, rest] = shift_ptr.shift_start_time.split("-");
-        const [day, time] = rest.split(" "); 
-        var start_time= `${year}-${month}-${day}T${time}`;
+        const [day, time] = rest.split(" ");
+        var start_time = `${year}-${month}-${day}T${time}`;
         setShiftptrstart(start_time);
         setFormData((prev) => ({
           ...prev,
@@ -115,8 +118,8 @@ export default function SchedulePage() {
       }
       if (shift_ptr.shift_end_time) {
         const [year, month, rest] = shift_ptr.shift_end_time.split("-");
-        const [day, time] = rest.split(" "); 
-        var end_time= `${year}-${month}-${day}T${time}`;
+        const [day, time] = rest.split(" ");
+        var end_time = `${year}-${month}-${day}T${time}`;
         setFormData((prev) => ({
           ...prev,
           shift_end_time: end_time,
@@ -129,7 +132,7 @@ export default function SchedulePage() {
   const handleChange = (e) => {
     if (e) {
       const { name, value } = e.target;
-      setFormData({ ...formData, [name]: value || formData[name]});
+      setFormData({ ...formData, [name]: value || formData[name] });
     }
   };
 
@@ -147,7 +150,7 @@ export default function SchedulePage() {
     e.preventDefault(); // Prevent page refresh
 
     try {
-      const res = await fetch("http://127.0.0.1:5000/submit", {
+      const res = await fetch(`${API_URL}/submit`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -186,7 +189,7 @@ export default function SchedulePage() {
   const totalMinutes = (endHour - startHour) * 60; // e.g. 6->22 = 16*60 = 960
 
   useEffect(() => {
-    fetch("http://127.0.0.1:5000/scheduled") // adjust endpoint as needed
+    fetch(`${API_URL}/scheduled`) // adjust endpoint as needed
       .then((r) => r.json())
       .then((json) => {
         setData(json);
@@ -202,7 +205,7 @@ export default function SchedulePage() {
         setPresent(hasUnassigned);
       })
       .catch((err) => console.error(err));
-      
+
   }, []);
 
   if (!data || !currentDate) return <div>Loading schedule...</div>;
@@ -215,63 +218,63 @@ export default function SchedulePage() {
 
   // Build per-employee grouped data for the currentDate
   // Build per-employee grouped data for the currentDate
-    let employees = (data.employee || [])
+  let employees = (data.employee || [])
     //let shifts_filter = (data.shift || [])
 
-  // only employees who are available and have daily_shift on that date
-  .filter((emp) => {
-    const hasDailyShift = (data.daily_shift || []).some(
-      (ds) => ds.emp_id === emp.emp_id && ds.shift_date === currentDate
+    // only employees who are available and have daily_shift on that date
+    .filter((emp) => {
+      const hasDailyShift = (data.daily_shift || []).some(
+        (ds) => ds.emp_id === emp.emp_id && ds.shift_date === currentDate
+      );
+      // console.log(emp.emp_id === 16 && emp.status === "Available", currentDate)
+      return emp.status === "Available" && hasDailyShift;
+    })
+    .map((emp) => {
+      const shifts = (data.daily_shift || []).filter(
+        (ds) => ds.emp_id === emp.emp_id && ds.shift_date === currentDate
+      );
+
+      const appointments = (data.shift || [])
+        .filter(
+          (s) => s.emp_id === emp.emp_id && s.date === currentDate
+        )
+        .map((s) => ({
+          ...s,
+          client: clientsMap[s.client_id] || null,
+        }));
+
+      return {
+        ...emp,
+        shifts,
+        appointments,
+      };
+    });
+  //let employees = (data.employee || []).filter((emp) => emp.status === "Available");
+
+  // Apply employee filter
+  if (filterEmployees.trim() !== "") {
+    employees = employees.filter(emp =>
+      (emp.first_name)
+        .toLowerCase()
+        .includes(filterEmployees.toLowerCase())
     );
-    // console.log(emp.emp_id === 16 && emp.status === "Available", currentDate)
-    return emp.status === "Available" && hasDailyShift;
-  })
-  .map((emp) => {
-    const shifts = (data.daily_shift || []).filter(
-      (ds) => ds.emp_id === emp.emp_id && ds.shift_date === currentDate
+  }
+
+  // Apply client group filter
+  if (filterClientGroup.trim() !== "") {
+    employees = employees.filter(emp =>
+      emp.client_group &&
+      emp.client_group.toLowerCase().includes(filterClientGroup.toLowerCase())
     );
+  }
 
-    const appointments = (data.shift || [])
-      .filter(
-        (s) => s.emp_id === emp.emp_id && s.date === currentDate
-      )
-      .map((s) => ({
-        ...s,
-        client: clientsMap[s.client_id] || null,
-      }));
-
-    return {
-      ...emp,
-      shifts,
-      appointments,
-    };
-  });
-    //let employees = (data.employee || []).filter((emp) => emp.status === "Available");
-
-    // Apply employee filter
-    if (filterEmployees.trim() !== "") {
-        employees = employees.filter(emp =>
-            (emp.first_name)
-                .toLowerCase()
-                .includes(filterEmployees.toLowerCase())
-        );
-    }
-
-    // Apply client group filter
-    if (filterClientGroup.trim() !== "") {
-        employees = employees.filter(emp =>
-            emp.client_group &&
-            emp.client_group.toLowerCase().includes(filterClientGroup.toLowerCase())
-        );
-    }
-
-    // Apply service department filter
-    if (filterServiceDept.trim() !== "") {
-        employees = employees.filter(emp =>
-            emp.service_department &&
-            emp.service_department.toLowerCase().includes(filterServiceDept.toLowerCase())
-        );
-    }
+  // Apply service department filter
+  if (filterServiceDept.trim() !== "") {
+    employees = employees.filter(emp =>
+      emp.service_department &&
+      emp.service_department.toLowerCase().includes(filterServiceDept.toLowerCase())
+    );
+  }
 
 
   // Helper: given sorted items, create segments (gap / item) to render efficiently
@@ -473,11 +476,11 @@ export default function SchedulePage() {
                 key={`${kind}-${it.shift_id || it.emp_id}-${idx}`}
                 className={kind === "shift" ? "employee-shift shift-cell" : "client-shift shift-cell"}
                 style={{ gridColumn: `span ${seg.span}`, cursor: "pointer" }} // very small visual
-                onClick={() => handleOpen(it.client_id,it.emp_id,it,it)}
+                onClick={() => handleOpen(it.client_id, it.emp_id, it, it)}
               >
                 <div className="shift-time"><i class={seg.span > 30 ? "bi bi-chat-left-text" : "d-none"} style={{ fontSize: `10px` }}></i> </div>
                 <div className="shift-desc"><i class={seg.span > 30 ? "bi bi-info-circle-fill" : "d-none"} style={{ fontSize: `10px` }}></i> </div>
-                <div className="shift-desc" style={{height:"30px", width:`${seg.span/2}`}}></div>
+                <div className="shift-desc" style={{ height: "30px", width: `${seg.span / 2}` }}></div>
               </div>
             </OverlayTrigger>
           );
@@ -488,7 +491,7 @@ export default function SchedulePage() {
             className={(kind === "shift") ? "employee-shift shift-cell" : "client-shift shift-cell"}
             style={{ gridColumn: `span ${seg.span}`, cursor: "pointer" }}
             title={`${String(startH).padStart(2, "0")}:${String(startM).padStart(2, "0")} - ${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`}
-            onClick={() => handleOpen(it.client_id,it.emp_id,it,it)}
+            onClick={() => handleOpen(it.client_id, it.emp_id, it, it)}
           >
             <div className="shift-time">
               {`${String(startH).padStart(2, "0")}:${String(startM).padStart(2, "0")} - ${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`}
@@ -540,31 +543,31 @@ export default function SchedulePage() {
       {/* Header Filters */}
       <div className="card-responsive mt-3 p-3">
         <div className="d-flex flex-wrap gap-3">
-                  <input type="text" className="form-control" placeholder="Employee" style={{ maxWidth: 200 }}
-                      value={filterEmployees}
-                      onChange={(e) => setFilterEmployees(e.target.value)}                  />
-                  <input type="text" className="form-control" placeholder="Client Group" style={{ maxWidth: 200 }}
-                      value={filterClientGroup}
-                      onChange={(e) => setFilterClientGroup(e.target.value)}                  />
-                  <input type="text" className="form-control" placeholder="Service Department" style={{ maxWidth: 200 }}
-                      value={filterServiceDept}
-                      onChange={(e) => setFilterServiceDept(e.target.value)}                  />
+          <input type="text" className="form-control" placeholder="Employee" style={{ maxWidth: 200 }}
+            value={filterEmployees}
+            onChange={(e) => setFilterEmployees(e.target.value)} />
+          <input type="text" className="form-control" placeholder="Client Group" style={{ maxWidth: 200 }}
+            value={filterClientGroup}
+            onChange={(e) => setFilterClientGroup(e.target.value)} />
+          <input type="text" className="form-control" placeholder="Service Department" style={{ maxWidth: 200 }}
+            value={filterServiceDept}
+            onChange={(e) => setFilterServiceDept(e.target.value)} />
           <input type="text" className="form-control" placeholder="Saved Filters" style={{ maxWidth: 200 }} />
-                  <button className="btn btn-outline-secondary"
-                      onClick={() => {
-                          setFilterEmployees("");
-                          setFilterClientGroup("");
-                          setFilterServiceDept("");
-                          setFilterSaved("");
-                      }}>
-                      Reset Filters
-                  </button>
+          <button className="btn btn-outline-secondary"
+            onClick={() => {
+              setFilterEmployees("");
+              setFilterClientGroup("");
+              setFilterServiceDept("");
+              setFilterSaved("");
+            }}>
+            Reset Filters
+          </button>
           <button className="btn btn-primary">Apply</button>
         </div>
       </div>
       <div className="schedule-wrapper container-fluid">
-                {/* ===== Unassigned Shifts Timeline ===== */}
-        
+        {/* ===== Unassigned Shifts Timeline ===== */}
+
         {/* UNASSIGNED CLIENT SHIFTS SECTION */}
         <div className="unassigned-wrapper container-fluid mt-4 mb-4">
           <div className="border-0 shadow-sm">
@@ -572,8 +575,8 @@ export default function SchedulePage() {
               Unassigned Client Shifts
             </div>
 
-            <div className={unassignedPresent?"p-0 unassigned-scroll-x":"d-none"}>
-              
+            <div className={unassignedPresent ? "p-0 unassigned-scroll-x" : "d-none"}>
+
               <div className="header-row bg-light border-bottom">
                 <div className="header-employee">Service Type / Client</div>
                 <div className="header-timeline">
@@ -582,7 +585,7 @@ export default function SchedulePage() {
                       <div
                         key={`unassigned-hour-${h}`}
                         className="header-hour"
-                        style={{ gridColumn: `span 60`}}
+                        style={{ gridColumn: `span 60` }}
                       >
                         {String(h).padStart(2, "0")}:00
                       </div>
@@ -591,7 +594,7 @@ export default function SchedulePage() {
                 </div>
               </div>
 
-              
+
               <div className="body-rows">
                 {Object.entries(
                   (data.client || []).reduce((groups, client) => {
@@ -606,14 +609,14 @@ export default function SchedulePage() {
                     return groups;
                   }, {})
                 ).map(([serviceType, clients]) => {
-                  
+
                   return (
                     <div key={serviceType} className="aacord mb-2">
-                      
+
                       <div
                         className="bg-light border py-2 px-3 d-flex justify-content-between align-items-center cursor-pointer"
                         onClick={() => toggleCollapse(serviceType)}
-                        style={{ cursor: "pointer", width:"1220px"}}
+                        style={{ cursor: "pointer", width: "1220px" }}
                       >
                         <span className="fw-bold text-dark">{serviceType}</span>
                         <i
@@ -621,7 +624,7 @@ export default function SchedulePage() {
                         ></i>
                       </div>
 
-                      
+
                       {!collapsed[serviceType] && (
                         <div className="client-rows">
                           {clients.map(({ client, unassigned }) => {
@@ -631,12 +634,12 @@ export default function SchedulePage() {
                                 className="schedule-row border-bottom"
                                 key={`unassigned-${client.client_id}`}
                               >
-                                
+
                                 <div className="employee-cell bg-white">
                                   <span className="fw-bold d-block">{client.name}</span>
                                 </div>
 
-                                
+
                                 <div className="timeline-row bg-light">
                                   {segments.map((seg, idx) => {
                                     if (seg.type === "empty") {
@@ -694,7 +697,7 @@ export default function SchedulePage() {
                 })}
               </div>
             </div>
-            <div className={!unassignedPresent?"p-2 unassigned-scroll-x text-centre d-flex":"d-none"}> No Unassigned Shifts </div>
+            <div className={!unassignedPresent ? "p-2 unassigned-scroll-x text-centre d-flex" : "d-none"}> No Unassigned Shifts </div>
           </div>
         </div>
 

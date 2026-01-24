@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../App";
+import API_URL from '../config/api';
 
 export default function Logout() {
     const { logout } = useAuth();
@@ -12,7 +13,7 @@ export default function Logout() {
 
             try {
                 if (token) {
-                    await fetch("http://127.0.0.1:5000/logout", {
+                    await fetch(`${API_URL}/logout`, {
                         method: "POST",
                         headers: {
                             "Authorization": `Bearer ${token}`,

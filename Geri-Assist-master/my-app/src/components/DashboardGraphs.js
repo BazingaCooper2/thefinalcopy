@@ -1,5 +1,6 @@
 import React from 'react';
 import { useEffect, useState } from 'react';
+import API_URL from '../config/api';
 import {
     LineChart,
     Line,
@@ -22,25 +23,27 @@ export default function DashboardGraphs() {
     const [statusData, setStatusData] = useState([]);
     useEffect(() => {
         // Clock timeline + pie
-        fetch('http://localhost:5000/dashboard/clock-stats')
+        fetch(`${API_URL}/dashboard/clock-stats`)
             .then(res => res.json())
             .then(data => {
                 setClockData(data.timeline);
-    
+
                 setClockStatusData([
                     { name: 'Clocked In', value: data.totals.clockedIn, color: '#8b5cf6' },
                     { name: 'Clocked Out', value: data.totals.clockedOut, color: '#06b6d4' },
                 ]);
-            });
-    
+            })
+            .catch(err => console.error("Error fetching clock stats:", err));
+
         // Employee status pie
-        fetch('http://localhost:5000/dashboard/employee-status')
+        fetch(`${API_URL}/dashboard/employee-status`)
             .then(res => res.json())
             .then(data => {
                 setStatusData(data);
-            });
+            })
+            .catch(err => console.error("Error fetching employee status:", err));
     }, []);
-    
+
     const CustomTooltip = ({ active, payload, label }) => {
         if (active && payload && payload.length) {
             return (

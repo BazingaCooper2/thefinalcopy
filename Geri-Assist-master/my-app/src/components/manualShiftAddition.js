@@ -1,5 +1,6 @@
 ﻿import React, { useState, useEffect } from "react";
 import "bootstrap/dist/css/bootstrap.min.css";
+import API_URL from '../config/api';
 
 const AddShift = () => {
     const [mode, setMode] = useState("client"); // "client" or "employee"
@@ -14,19 +15,19 @@ const AddShift = () => {
         shift_date: new Date().toISOString().slice(0, 10),
         shift_start_time: "09:00",
         shift_end_time: "17:00",
-        shift_type: "s1",
-        status:"Scheduled",
+        shift_type: "flw_rtw",
+        status: "Scheduled",
     });
 
     // Fetch employee + client list
     useEffect(() => {
-        fetch("http://127.0.0.1:5000/employees")
+        fetch(`${API_URL}/employees`)
             .then((res) => res.json())
-            .then((data) => setEmployees(data.employee || []));
+            .then((data) => setEmployees(data || []));
 
-        fetch("http://127.0.0.1:5000/clients")
+        fetch(`${API_URL}/clients`)
             .then((res) => res.json())
-            .then((data) => setClients(data.client || []));
+            .then((data) => setClients(data.clients || []));
     }, []);
 
     const handleChange = (e) => {
@@ -39,8 +40,8 @@ const AddShift = () => {
 
         const url =
             mode === "client"
-                ? "http://127.0.0.1:5000/add_client_shift"
-                : "http://127.0.0.1:5000/add_employee_shift";
+                ? `${API_URL}/add_client_shift`
+                : `${API_URL}/add_employee_shift`;
 
         const payload =
             mode === "client"
@@ -92,7 +93,7 @@ const AddShift = () => {
                             className={`btn ${mode === "client" ? "btn-primary" : "btn-outline-primary"}`}
                             onClick={() => setMode("client")}
                         >
-                            Client Shift
+                            Client Shift (Visit)
                         </button>
 
                         <button
@@ -142,7 +143,7 @@ const AddShift = () => {
                                     </select>
                                 </div>
 
-                                
+
                             </>
                         ) : (
                             <>
@@ -162,18 +163,22 @@ const AddShift = () => {
                                             </option>
                                         ))}
                                     </select>
-                                    </div>
-                                    {/* Shift Type */}
-                                    <div className="mb-3">
-                                        <label className="form-label fw-bold">Shift Type</label>
-                                        <input
-                                            name="text"
-                                            className="form-select"
-                                            value={formData.shift_type}
-                                            onChange={handleChange}
-                                        >
-                                        </input>
-                                    </div>
+                                </div>
+                                {/* Shift Type */}
+                                <div className="mb-3">
+                                    <label className="form-label fw-bold">Shift Type</label>
+                                    <select
+                                        name="text"
+                                        className="form-select"
+                                        value={formData.shift_type}
+                                        onChange={handleChange}
+                                    >
+                                        <option value="flw-rtw">FLW Return to Work</option>
+                                        <option value="flw-training">FLW Training</option>
+                                        <option value="gil-training">GIL Training</option>
+
+                                    </select>
+                                </div>
                             </>
                         )}
 
