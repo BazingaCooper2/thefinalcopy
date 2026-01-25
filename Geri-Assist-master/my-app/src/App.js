@@ -28,6 +28,8 @@ import AddShift from './components/manualShiftAddition';
 import MasterSchedule from './components/MasterSchedule';
 import DailySchedule from './components/DailySchedule';
 import ShiftOffers from './components/ShiftOffers';
+import AdminDashboard from './components/adminDashboard';
+import AdminSchedule from './components/AdminSchedule';
 
 import '../node_modules/bootstrap/dist/css/bootstrap.min.css';
 
@@ -239,6 +241,24 @@ function AppContent() {
                   </ProtectedRoute>
                 }
               />
+              <Route
+                  path="/admin/dashboard"
+                  element={
+                    <ProtectedRoute supervisorOnly>
+                      <AdminDashboard />
+                    </ProtectedRoute>
+                  }
+                />
+
+                <Route
+                  path="/admin/schedule"
+                  element={
+                    <ProtectedRoute supervisorOnly>
+                      <AdminSchedule />
+                    </ProtectedRoute>
+                  }
+                />
+
 
               <Route path="*" element={<Navigate to="/login" replace />} />
             </Routes>
