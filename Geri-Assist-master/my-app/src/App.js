@@ -263,8 +263,6 @@ function AppContent() {
               <Route path="*" element={<Navigate to="/login" replace />} />
             </Routes>
           </div>
-
-          <Footer />
         </div>
       </div>
     </div>

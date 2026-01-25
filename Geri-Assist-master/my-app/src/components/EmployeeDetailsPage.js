@@ -296,7 +296,7 @@ const EmployeeDetails = () => {
                                     <th>Employee</th>
                                     <th>Type</th>
                                     <th>Contact</th>
-                                    <th>Status</th>
+                                    <th>Location</th>
                                     <th>Availability</th>
                                     <th>Capacity</th>
                                     <th className="text-center">Actions</th>
