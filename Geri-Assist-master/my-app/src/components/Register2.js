@@ -396,8 +396,8 @@ export default function Register() {
                         >
                           <option value="">Select...</option>
                           <option>Full Time</option>
-                          <option>Half Time</option>
-                          <option>Temporary</option>
+                          <option>Part Time</option>
+                          <option>Casual</option>
                         </select>
                       </div>
                     </div>

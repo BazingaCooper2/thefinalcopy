@@ -6,12 +6,19 @@ export default function SchedulePage() {
   const [scheduleData, setScheduleData] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [selectedShift, setSelectedShift] = useState(null);
+  const [showShiftModal, setShowShiftModal] = useState(false);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [viewMode, setViewMode] = useState('matrix');
   const [selectedLocation, setSelectedLocation] = useState('85 Neeve');
   const [timelineDays, setTimelineDays] = useState(14);
 
   const locations = ['85 Neeve', '87 Neeve', 'Willow Place', 'Outreach', 'Assisted Living', 'Seniors Assisted Living'];
+  
+  const getEmployeeById = (empId) =>
+    employees.find(e => e.emp_id === empId);
+  const getClientById = (clientId) =>
+    scheduleData.client?.find(c => c.client_id === clientId);
 
   useEffect(() => {
     fetchScheduleData();
@@ -193,20 +200,24 @@ export default function SchedulePage() {
                         <td key={i} className="p-0 border-end border-bottom text-center align-middle" style={{ height: '60px', backgroundColor: '#fff7ed' }}>
                           {/* Using light yellow/orange tint (#fff7ed) for empty cells to match 'try like this' vibe */}
                           {hasShift && (
-                            <div
-                              className="mx-auto shadow-sm rounded-1 d-flex align-items-center justify-content-center fw-bold small text-dark"
-                              style={{
-                                width: '100%',
-                                height: '80%',
-                                backgroundColor: '#ffffff', // White box for shift
-                                cursor: 'pointer'
-                              }}
-                              title={shift.shift_start_time}
-                            >
-                              {/* Simply 'e' or time? User image showed 'e'. Let's show time for utility but keep simplistic look. */}
-                              {shift.shift_start_time.toString().split('T')[1].slice(0, 5)}-{shift.shift_end_time.toString().split('T')[1].slice(0, 5)}
-                            </div>
-                          )}
+  <div
+    className="mx-auto shadow-sm rounded-1 d-flex align-items-center justify-content-center fw-bold small text-dark"
+    style={{
+      width: '100%',
+      height: '80%',
+      backgroundColor: '#ffffff',
+      cursor: 'pointer'
+    }}
+    onClick={() => {
+      setSelectedShift(shift);
+      setShowShiftModal(true);
+    }}
+  >
+    {shift.shift_start_time.toString().split('T')[1].slice(0, 5)}-
+    {shift.shift_end_time.toString().split('T')[1].slice(0, 5)}
+  </div>
+)}
+
                         </td>
                       );
                     })}
@@ -217,13 +228,13 @@ export default function SchedulePage() {
           </div>
         </div>
       ) : (
-        <RosterListView days={days} scheduleData={scheduleData} employees={employees} selectedLocation={selectedLocation} />
+        <RosterListView days={days} scheduleData={scheduleData} employees={employees} selectedLocation={selectedLocation}onShiftClick={(shift) => {setSelectedShift(shift);setShowShiftModal(true);}}/>
       )}
     </div>
   );
 }
 
-function RosterListView({ days, scheduleData, employees, selectedLocation }) {
+function RosterListView({ days, scheduleData, employees, selectedLocation, onShiftClick }) {
   return (
     <div className="bg-white rounded border shadow-sm p-4">
       {days.slice(0, 7).map((day, dayIdx) => {
@@ -239,14 +250,54 @@ function RosterListView({ days, scheduleData, employees, selectedLocation }) {
                   <tbody>
                     {shifts.map((s, idx) => {
                       const emp = employees.find(e => e.emp_id === s.emp_id);
+                      const clientName = s.client?.name || "Unknown Client";
                       return (
-                        <tr key={idx}>
-                          <td width="100" className="fw-bold small">{s.shift_start_time ? new Date(s.shift_start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'TBD'}</td>
-                          <td><span className="badge bg-light text-dark border">{selectedLocation || 'Assigned'}</span></td>
-                          <td>
-                            {emp ? <span className="small fw-bold">{emp.first_name} {emp.last_name}</span> : <span className="small text-danger">Unassigned</span>}
-                          </td>
-                        </tr>
+                        <tr
+  key={idx}
+  style={{ cursor: 'pointer' }}
+  onClick={() => onShiftClick(s)}
+>
+  {/* Time */}
+  <td width="100" className="fw-bold small">
+    {s.shift_start_time
+      ? new Date(s.shift_start_time).toLocaleTimeString([], {
+          hour: '2-digit',
+          minute: '2-digit'
+        })
+      : 'TBD'}
+  </td>
+
+  {/* Location */}
+  <td>
+    <span className="badge bg-light text-dark border">
+      {selectedLocation || 'Assigned'}
+    </span>
+  </td>
+
+  {/* Client */}
+  <td>
+  {clientName ? (
+    <span className="small">
+      <i className="bi bi-person me-1"></i>
+      {clientName}
+    </span>
+  ) : (
+    <span className="small text-muted">Unknown Client</span>
+  )}
+</td>
+
+  {/* Employee */}
+  <td>
+    {emp ? (
+      <span className="small fw-bold">
+        {emp.first_name} {emp.last_name}
+      </span>
+    ) : (
+      <span className="small text-danger">Unassigned</span>
+    )}
+  </td>
+</tr>
+
                       )
                     })}
                   </tbody>

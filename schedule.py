@@ -106,18 +106,23 @@ def dashboard_stats():
 # schedule display
 @app.route('/scheduled', methods=['GET'])
 def schedule():
-    clients = supabase.table("client").select("*").execute()
+    clients = supabase.table("client").select("client_id, name").execute()
     employees = supabase.table("employee").select("*").execute()
     shifts = supabase.table("shift").select("*").execute()
     daily_shifts = supabase.table("daily_shift").select("*").execute()
 
-    datatosend = {
-        "client": clients.data,
+    client_map = {c["client_id"]: c for c in clients.data}
+
+    for s in shifts.data:
+        s["client"] = client_map.get(s.get("client_id"))
+
+    return jsonify({
+        "client": clients.data,      # unchanged
         "employee": employees.data,
-        "shift": shifts.data,
+        "shift": shifts.data,         # NOW FIXED
         "daily_shift": daily_shifts.data
-    }
-    return jsonify(datatosend)
+    })
+
 
 @app.route('/submit', methods=['POST'])
 def edit_schedule():

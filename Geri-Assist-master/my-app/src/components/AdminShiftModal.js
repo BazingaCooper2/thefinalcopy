@@ -138,7 +138,7 @@ export default function AdminShiftModal({ shift, onClose, onUpdated }) {
         }
 
         .shift-info {
-          background: rgba(255, 255, 255, 0.1);
+          background: rgba(0, 0, 0, 0.1);
           border-radius: 16px;
           padding: 16px;
           margin-bottom: 20px;
@@ -182,7 +182,7 @@ export default function AdminShiftModal({ shift, onClose, onUpdated }) {
           background: rgba(255, 255, 255, 0.15);
           border: 1px solid rgba(255, 255, 255, 0.3);
           border-radius: 12px;
-          color: #fff;
+          color: #000000;
           font-size: 14px;
           margin-bottom: 16px;
           transition: all 0.2s;
@@ -190,7 +190,7 @@ export default function AdminShiftModal({ shift, onClose, onUpdated }) {
         }
 
         .glass-input::placeholder {
-          color: rgba(255, 255, 255, 0.6);
+          color: rgba(0, 0, 0, 0.6);
         }
 
         .glass-input:focus {
@@ -243,7 +243,7 @@ export default function AdminShiftModal({ shift, onClose, onUpdated }) {
         }
 
         .btn-success:hover:not(:disabled) {
-          background: rgba(25, 135, 84, 0.5);
+          background: rgba(0, 160, 85, 0.5);
           transform: translateY(-2px);
           box-shadow: 0 4px 12px rgba(25, 135, 84, 0.3);
         }
@@ -254,18 +254,18 @@ export default function AdminShiftModal({ shift, onClose, onUpdated }) {
         }
 
         .btn-warning:hover:not(:disabled) {
-          background: rgba(255, 193, 7, 0.5);
+          background: rgba(255, 191, 0, 0.5);
           transform: translateY(-2px);
           box-shadow: 0 4px 12px rgba(255, 193, 7, 0.3);
         }
 
         .btn-danger {
-          background: rgba(220, 53, 69, 0.3);
+          background: rgba(235, 37, 57, 0.3);
           color: #fff;
         }
 
         .btn-danger:hover:not(:disabled) {
-          background: rgba(220, 53, 69, 0.5);
+          background: rgba(255, 0, 25, 0.5);
           transform: translateY(-2px);
           box-shadow: 0 4px 12px rgba(220, 53, 69, 0.3);
         }
