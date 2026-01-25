@@ -137,9 +137,10 @@ def edit_schedule():
     print(e_time)
     # 2. Update shift times
     supabase.table("shift").update({
-        "shift_start_time": str(s_time).replace(' ','T')[:19] + "Z",
-        "shift_end_time": str(e_time).replace(' ','T')[:19] + "Z"
-    }).eq("shift_id", s_id).execute()
+    "shift_start_time": parse_datetime(data["shift_start_time"]).isoformat().replace("+00:00", "Z"),
+    "shift_end_time": parse_datetime(data["shift_end_time"]).isoformat().replace("+00:00", "Z")
+}).eq("shift_id", s_id).execute()
+
 
     # 3. Call Postgres function for daily_shift updates
     supabase.rpc("update_daily_shifts", {}).execute()
@@ -230,24 +231,35 @@ def detect_changes():
     return changes
 
 def parse_datetime(tstr: str) -> datetime:
-    # Expect ISO 8601 UTC: YYYY-MM-DDTHH:MM[:SS]Z
-    return datetime.fromisoformat(tstr.replace("Z", ""))
+    """
+    Accepts:
+    - YYYY-MM-DDTHH:MM[:SS]Z
+    - YYYY-MM-DD HH:MM
+    - HH:MM  (assumes today, UTC)
+    Returns UTC-aware datetime
+    """
+    if not tstr:
+        return None
 
+    # ISO UTC
+    if "T" in tstr:
+        return datetime.fromisoformat(
+            tstr.replace("Z", "+00:00")
+        )
 
+    # Date + time
+    if " " in tstr:
+        return datetime.strptime(
+            tstr, "%Y-%m-%d %H:%M"
+        ).replace(tzinfo=timezone.utc)
 
-def normalize_datetime(date_str, time_or_dt):
-    # already a datetime → return as-is
-    if " " in time_or_dt:
-        return time_or_dt
-    # only time → prepend date
-    return f"{date_str} {time_or_dt}"
-
+    # Time only
+    today = datetime.utcnow().date()
+    return datetime.strptime(
+        f"{today} {tstr}", "%Y-%m-%d %H:%M"
+    ).replace(tzinfo=timezone.utc)
 
 def overlaps(em, cdate, client_start_time, client_end_time, dsst, dset, ssst, sset, sdate):
-    """
-    All inputs MUST be ISO UTC: YYYY-MM-DDTHH:MM[:SS]Z
-    """
-
     if not dsst or not dset:
         return False
 
@@ -256,16 +268,22 @@ def overlaps(em, cdate, client_start_time, client_end_time, dsst, dset, ssst, ss
     dsst_dt         = parse_datetime(dsst)
     dset_dt         = parse_datetime(dset)
 
-    # Basic overlap with daily shift
+    if not all([client_start_dt, client_end_dt, dsst_dt, dset_dt]):
+        return False
+
+    # Overlap with daily shift
     if not (client_start_dt < dset_dt and client_end_dt > dsst_dt):
         return False
 
-    # If no secondary shift, we’re good
+    # No secondary shift → valid
     if not ssst or not sset:
         return True
 
     ssst_dt = parse_datetime(ssst)
     sset_dt = parse_datetime(sset)
+
+    if not ssst_dt or not sset_dt:
+        return True
 
     # Exclude overlap with secondary shift
     if client_start_dt < sset_dt and client_end_dt > ssst_dt:
@@ -340,8 +358,6 @@ EMPLOYMENT_PRIORITY = {
     "Casual": 3
 }
 
-from datetime import datetime
-
 def assign_tasks(changes):
     for ch in changes["new_clients"]:
         shift_id = ch["shift_id"]
@@ -402,13 +418,16 @@ def assign_tasks(changes):
         best_employee = eligible[0]
 
         # 4️⃣ Time check
-        today = date.today()
-        shift_start = datetime.strptime(
-            f"{today} {ch['shift_start_time']}",
-            "%Y-%m-%d %H:%M"
-        )
+        shift_start = parse_datetime(ch["shift_start_time"])
 
-        hours_to_shift = (shift_start - datetime.utcnow()).total_seconds() / 3600
+        if not shift_start:
+            print(f"[SKIP] Invalid shift_start_time for shift {shift_id}")
+            continue
+
+        hours_to_shift = (
+            shift_start - datetime.utcnow().replace(tzinfo=timezone.utc)
+        ).total_seconds() / 3600
+
 
         # 🟢 AUTO-ASSIGN (<24h)
         if hours_to_shift < 24:
@@ -441,7 +460,7 @@ def assign_tasks(changes):
                 "emp_id": best_employee["emp_id"],
                 "status": "sent",
                 "offer_order": 1,
-                "sent_at": datetime.utcnow().isoformat() + "Z"
+                "sent_at": utc_now_iso()
             },
             on_conflict="shift_id,emp_id"
         ).execute()
@@ -483,7 +502,7 @@ def accept_shift_offer(shift_id, emp_id):
 
     supabase.table("shift_offers").update({
         "status": "accepted",
-        "response_time": datetime.utcnow().isoformat() + "Z"
+        "response_time": utc_now_iso()
     }).eq("shift_id", shift_id).eq("emp_id", emp_id).execute()
 
     supabase.table("shift_offers").update({
@@ -584,7 +603,7 @@ def activate_next_offer(shift_id: int):
             "emp_id": next_employee["emp_id"],
             "status": "sent",
             "offer_order": next_order,
-            "sent_at": datetime.utcnow().isoformat() + "Z"
+            "sent_at": utc_now_iso()
         },
         on_conflict="shift_id,emp_id"
     ).execute()
@@ -672,7 +691,7 @@ def respond_to_offer():
     # Update offer
     supabase.table("shift_offers").update({
         "status": new_status,
-        "response_time": datetime.utcnow().isoformat() + "Z"
+        "response_time": utc_now_iso()
     }).eq("shift_id", shift_id).eq("emp_id", emp_id).execute()
 
     if new_status == "accepted":
@@ -1148,7 +1167,7 @@ def clock_in():
 
     supabase.table("shift").update({
         "shift_status": "Clocked in",
-        "clock_in": datetime.utcnow().isoformat() + "Z",
+        "clock_in": utc_now_iso(),
         "clock_out": None
     }).eq("shift_id", shift_id).execute()
 
@@ -1180,7 +1199,7 @@ def clock_out():
 
     supabase.table("shift").update({
         "shift_status": "Clocked out",
-        "clock_out": datetime.utcnow().isoformat() + "Z"
+        "clock_out": utc_now_iso()
     }).eq("shift_id", shift_id).execute()
 
     return jsonify({"status": "clocked_out"}), 200
@@ -1272,7 +1291,7 @@ def task_assign():
                 "message": "shift_id and details are required"
             }), 400
 
-        now = datetime.utcnow().isoformat() + "Z"
+        now = utc_now_iso()
 
         task_payload = {
             "shift_id": shift_id,
@@ -1404,7 +1423,7 @@ def task_complete():
                 "message": "task_id is required"
             }), 400
 
-        now = datetime.utcnow().isoformat() + "Z"
+        now = utc_now_iso()
 
         res = (
             supabase
@@ -1605,21 +1624,28 @@ def send_injury_report():
     data = request.get_json()
     if not data:
         return jsonify({"error": "Invalid request"}), 400
-    if data.get("report_type") == "hazard":
-        send_hazard_report(data)
-    if data.get("report_type") == "hazard-followup":
+
+    report_type = data.get("report_type")
+
+    if report_type == "hazard":
+        return send_hazard_report(data)
+
+    if report_type == "hazard-followup":
         return update_hazard_followup(data)
-    if data.get("report_type") == "incident":
+
+    if report_type == "incident":
         return create_incident(data)
-    if data.get("report_type") == "incident-followup":
+
+    if report_type == "incident-followup":
         return send_incident_followup(data)
-    if data.get("report_type") == "injury":
+
+    if report_type == "injury":
         return report_injury(data)
-    if data.get("report_type") == "injury-followup":
+
+    if report_type == "injury-followup":
         return injury_followup(data)
-    else:
-        print(data)
-    return data
+
+    return jsonify({"error": "Unsupported report type"}), 400
 
 
 def send_hazard_report(payload):
@@ -1652,7 +1678,7 @@ def send_hazard_report(payload):
             "witness_date": payload.get("witness_date"),
             "witness_time": payload.get("witness_time"),
             "status": "submitted",
-            "created_at": datetime.utcnow().isoformat() + "Z"
+            "created_at": utc_now_iso()
         }
 
         # 🔹 Insert into Supabase
@@ -1998,9 +2024,9 @@ This is a system-generated follow-up notification.
         "message": "Incident follow-up submitted successfully",
         "incident_id": incident_id
     }), 200
-
+def utc_now_iso():
+    return utc_now_iso()
 def report_injury(payload):
-    payload = request.json  # assuming Flask
 
     injury_data = {
         "date": payload["date_of_injury"],
@@ -2180,7 +2206,7 @@ def injury_followup(payload):
         <h4>Manager Recommendations</h4>
         <p>{payload.get("manager_recommendations")}</p>
 
-        <p><em>Submitted on {datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")}</em></p>
+        <p><em>Submitted on {utc_now_iso("%Y-%m-%d %H:%M UTC")}</em></p>
         """
 
         send_email(
@@ -2226,8 +2252,8 @@ def add_client_shift():
         supabase.table("shift").insert({
             "client_id": data["client_id"],
             "emp_id":data["emp_id"],
-            "shift_start_time": data["shift_start_time"].replace(' ','T')[:19] + "Z",
-            "shift_end_time": data["shift_end_time"].replace(' ','T')[:19] + "Z",
+            "shift_start_time": parse_datetime(data["shift_start_time"]).isoformat().replace("+00:00", "Z"),
+            "shift_end_time": parse_datetime(data["shift_end_time"]).isoformat().replace("+00:00", "Z"),
             "date":data["shift_date"],
             "shift_status": data['shift_status'],
         }).execute()
@@ -3106,7 +3132,7 @@ def force_assign_shift():
     # 3️⃣ Update offers
     supabase.table("shift_offers").update({
         "status": "accepted",
-        "response_time": datetime.utcnow().isoformat() + "Z"
+        "response_time": utc_now_iso()
     }).eq("shift_id", shift_id).eq("emp_id", emp_id).execute()
 
     supabase.table("shift_offers").update({
@@ -3176,7 +3202,7 @@ def manual_shift_offer():
             "emp_id": emp_id,
             "status": "sent",
             "offer_order": next_order,
-            "sent_at": datetime.utcnow().isoformat() + "Z"
+            "sent_at": utc_now_iso()
         },
         on_conflict="shift_id,emp_id"
     ).execute()
