@@ -3023,6 +3023,360 @@ def manual_shift_offer():
     }), 200
 
 
+###ADMIN
+@app.route("/admin/shift", methods=["POST"])
+def admin_add_shift():
+    data = request.json
+
+    client_id = data["client_id"]
+    date_ = data["date"]              # YYYY-MM-DD (UTC)
+    start = data["start_time"]        # HH:MM
+    end = data["end_time"]
+
+    # Create shift
+    shift = supabase.table("shift").insert({
+        "client_id": client_id,
+        "date": date_,
+        "shift_start_time": f"{date_}T{start}:00Z",
+        "shift_end_time": f"{date_}T{end}:00Z",
+        "shift_status": "Unassigned",
+        "emp_id": None
+    }).execute().data[0]
+
+    # Auto schedule
+    changes = {
+        "new_clients": [{
+            "shift_id": shift["shift_id"],
+            "client_id": client_id,
+            "date": date_,
+            "shift_start_time": shift["shift_start_time"],
+            "shift_end_time": shift["shift_end_time"]
+        }]
+    }
+
+    assign_tasks(changes)
+
+    updated = supabase.table("shift") \
+        .select("shift_id, emp_id, shift_status") \
+        .eq("shift_id", shift["shift_id"]) \
+        .single() \
+        .execute().data
+
+    return jsonify({
+        "shift_id": updated["shift_id"],
+        "status": updated["shift_status"],
+        "emp_id": updated["emp_id"]
+    }), 201
+@app.route("/admin/shift/<int:shift_id>", methods=["DELETE"])
+def admin_delete_shift(shift_id):
+    supabase.table("shift_offers").delete().eq("shift_id", shift_id).execute()
+    supabase.table("shift").delete().eq("shift_id", shift_id).execute()
+
+    return jsonify({
+        "shift_id": shift_id,
+        "deleted": True
+    }), 200
+@app.route("/admin/shift/<int:shift_id>/reassign", methods=["POST"])
+def admin_reassign_shift(shift_id):
+    # Unassign
+    supabase.table("shift").update({
+        "emp_id": None,
+        "shift_status": "Unassigned"
+    }).eq("shift_id", shift_id).execute()
+
+    supabase.table("shift_offers").update({
+        "status": "expired"
+    }).eq("shift_id", shift_id).execute()
+
+    # Re-run scheduling
+    shift = supabase.table("shift").select("*").eq("shift_id", shift_id).single().execute().data
+    assign_tasks({
+        "new_clients": [shift]
+    })
+
+    updated = supabase.table("shift") \
+        .select("shift_status, emp_id") \
+        .eq("shift_id", shift_id) \
+        .single() \
+        .execute().data
+
+    return jsonify({
+        "shift_id": shift_id,
+        "status": updated["shift_status"],
+        "emp_id": updated["emp_id"]
+    }), 200
+@app.route("/admin/shift/<int:shift_id>/force", methods=["POST"])
+def admin_force_assign(shift_id):
+    emp_id = request.json["emp_id"]
+
+    supabase.table("shift").update({
+        "emp_id": emp_id,
+        "shift_status": "Scheduled"
+    }).eq("shift_id", shift_id).execute()
+
+    supabase.table("shift_offers").update({
+        "status": "expired"
+    }).eq("shift_id", shift_id).execute()
+
+    notify_employee(emp_id, {
+        "type": "offer_result",
+        "status": "assigned",
+        "shift_id": shift_id
+    })
+
+    return jsonify({
+        "shift_id": shift_id,
+        "status": "Scheduled",
+        "emp_id": emp_id,
+        "mode": "forced"
+    }), 200
+@app.route("/admin/shift/<int:shift_id>/resolve", methods=["POST"])
+def admin_resolve_shift(shift_id):
+    shift = supabase.table("shift").select("*").eq("shift_id", shift_id).single().execute().data
+
+    if shift["shift_status"] == "Offer Sent":
+        activate_next_offer(shift_id)
+    else:
+        assign_tasks({"new_clients": [shift]})
+
+    updated = supabase.table("shift") \
+        .select("shift_status, emp_id") \
+        .eq("shift_id", shift_id) \
+        .single() \
+        .execute().data
+
+    return jsonify({
+        "shift_id": shift_id,
+        "status": updated["shift_status"],
+        "emp_id": updated["emp_id"]
+    }), 200
+@app.route("/admin/shifts/bulk", methods=["POST"])
+def admin_bulk_add():
+    data = request.json
+
+    client_id = data["client_id"]
+    dates = data["dates"]
+    start = data["start_time"]
+    end = data["end_time"]
+
+    created = []
+
+    for d in dates:
+        shift = supabase.table("shift").insert({
+            "client_id": client_id,
+            "date": d,
+            "shift_start_time": f"{d}T{start}:00Z",
+            "shift_end_time": f"{d}T{end}:00Z",
+            "shift_status": "Unassigned",
+            "emp_id": None
+        }).execute().data[0]
+
+        created.append(shift)
+
+    assign_tasks({"new_clients": created})
+
+    return jsonify({
+        "created": len(created)
+    }), 201
+@app.route("/admin/shifts/reassign", methods=["POST"])
+def admin_bulk_reassign():
+    shift_ids = request.json["shift_ids"]
+
+    processed = 0
+    for sid in shift_ids:
+        supabase.table("shift").update({
+            "emp_id": None,
+            "shift_status": "Unassigned"
+        }).eq("shift_id", sid).execute()
+
+        shift = supabase.table("shift").select("*").eq("shift_id", sid).single().execute().data
+        assign_tasks({"new_clients": [shift]})
+        processed += 1
+
+    return jsonify({
+        "processed": processed
+    }), 200
+@app.route("/admin/shifts", methods=["GET"])
+def admin_shifts():
+    date_ = request.args.get("date")
+    status = request.args.get("status")
+
+    q = supabase.table("shift").select("*")
+
+    if date_:
+        q = q.eq("date", date_)
+    if status:
+        q = q.eq("shift_status", status)
+
+    return jsonify(q.order("shift_start_time").execute().data), 200
+@app.route("/admin/dashboard/shift-health", methods=["GET"])
+def admin_shift_health():
+    return jsonify({
+        "unassigned": supabase.table("shift").select("shift_id", count="exact")
+            .eq("shift_status", "Unassigned").execute().count,
+        "offers_pending": supabase.table("shift").select("shift_id", count="exact")
+            .eq("shift_status", "Offer Sent").execute().count
+    })
+@app.route("/admin/schedule", methods=["GET"])
+def admin_schedule():
+    start_date = request.args.get("start_date")
+    end_date = request.args.get("end_date")
+    status = request.args.get("status")
+
+    if not start_date or not end_date:
+        return jsonify({"error": "start_date and end_date required"}), 400
+
+    q = supabase.table("shift").select("""
+        shift_id,
+        date,
+        shift_start_time,
+        shift_end_time,
+        shift_status,
+        emp_id,
+        client_id
+    """).gte("date", start_date).lte("date", end_date)
+
+    if status:
+        q = q.eq("shift_status", status)
+
+    shifts = q.order("date").order("shift_start_time").execute().data or []
+
+    if not shifts:
+        return jsonify([]), 200
+
+    client_ids = list({s["client_id"] for s in shifts if s["client_id"]})
+    emp_ids = list({s["emp_id"] for s in shifts if s["emp_id"]})
+
+    clients = {
+        c["client_id"]: c
+        for c in supabase.table("client")
+        .select("client_id, first_name, last_name, name")
+        .in_("client_id", client_ids)
+        .execute().data
+    }
+
+    employees = {
+        e["emp_id"]: e
+        for e in supabase.table("employee")
+        .select("emp_id, first_name, last_name")
+        .in_("emp_id", emp_ids)
+        .execute().data
+    }
+
+    result = []
+    for s in shifts:
+        client = clients.get(s["client_id"])
+        emp = employees.get(s["emp_id"]) if s["emp_id"] else None
+
+        result.append({
+            "shift_id": s["shift_id"],
+            "date": s["date"],
+            "start_time": s["shift_start_time"],
+            "end_time": s["shift_end_time"],
+            "status": s["shift_status"],
+            "client": {
+                "id": client["client_id"],
+                "name": client.get("name") or f"{client['first_name']} {client['last_name']}"
+            } if client else None,
+            "employee": {
+                "id": emp["emp_id"],
+                "name": f"{emp['first_name']} {emp['last_name']}"
+            } if emp else None
+        })
+
+    return jsonify(result), 200
+
+@app.route("/admin/dashboard", methods=["GET"])
+def admin_dashboard_view():
+    now = datetime.utcnow()
+    today = now.date().isoformat()
+    next_24h = (now + timedelta(hours=24)).isoformat() + "Z"
+
+    # 1️⃣ Unassigned shifts
+    unassigned = (
+        supabase.table("shift")
+        .select(
+            "shift_id, client_id, date, shift_start_time, shift_end_time, shift_status"
+        )
+        .eq("shift_status", "Unassigned")
+        .order("date")
+        .execute()
+        .data
+        or []
+    )
+
+    # 2️⃣ Offer sent (pending)
+    offer_sent = (
+        supabase.table("shift")
+        .select(
+            "shift_id, client_id, date, shift_start_time, shift_end_time, shift_status"
+        )
+        .eq("shift_status", "Offer Sent")
+        .order("date")
+        .execute()
+        .data
+        or []
+    )
+
+    # 3️⃣ Starting soon (next 24h, not completed)
+    starting_soon = (
+        supabase.table("shift")
+        .select(
+            "shift_id, client_id, date, shift_start_time, shift_end_time, shift_status"
+        )
+        .gte("shift_start_time", now.isoformat() + "Z")
+        .lte("shift_start_time", next_24h)
+        .neq("shift_status", "Clocked out")
+        .order("shift_start_time")
+        .execute()
+        .data
+        or []
+    )
+
+    # Collect client names
+    client_ids = list({
+        s["client_id"]
+        for s in (unassigned + offer_sent + starting_soon)
+        if s.get("client_id")
+    })
+
+    clients = {}
+    if client_ids:
+        res = (
+            supabase.table("client")
+            .select("client_id, first_name, last_name, name")
+            .in_("client_id", client_ids)
+            .execute()
+            .data
+        )
+        clients = {
+            c["client_id"]: c.get("name") or f'{c["first_name"]} {c["last_name"]}'
+            for c in res
+        }
+
+    # Helper to normalize shift for frontend
+    def normalize(s):
+        return {
+            "shift_id": s["shift_id"],
+            "date": s["date"],
+            "start": s["shift_start_time"][11:16],
+            "end": s["shift_end_time"][11:16],
+            "client_name": clients.get(s["client_id"], "—"),
+            "shift_status": s["shift_status"],
+        }
+
+    return jsonify({
+        "counts": {
+            "unassigned": len(unassigned),
+            "offer_sent": len(offer_sent),
+            "starting_soon": len(starting_soon),
+        },
+        "unassigned_shifts": [normalize(s) for s in unassigned],
+        "offer_sent_shifts": [normalize(s) for s in offer_sent],
+        "starting_soon_shifts": [normalize(s) for s in starting_soon],
+    })
+
+
 # --- Run ---
 if __name__ == '__main__':
     app.run(debug=True)
