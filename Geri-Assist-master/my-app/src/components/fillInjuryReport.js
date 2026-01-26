@@ -271,7 +271,7 @@ const SignaturePad = ({ label, onEnd }) => {
 // --- 2. HAZARD REPORT FOLLOW-UP (Supervisor/Manager/JHSC) ---
 const HazardFollowupForm = ({ onSubmit, loading }) => {
   const [data, setData] = useState({
-    hazard_id:0, supervisor_rec: "", supervisor_signature: "", supervisor_sign_date: "", supervisor_sign_time: "",
+    hazard_id: 0, supervisor_rec: "", supervisor_signature: "", supervisor_sign_date: "", supervisor_sign_time: "",
     manager_followup: "", manager_signature: "", manager_sign_date: "",
     jhsc_rec: "", worker_co_chair_signature: "", worker_co_chair_date: "", management_co_chair_signature: "", management_co_chair_date: ""
   });
@@ -291,11 +291,11 @@ const HazardFollowupForm = ({ onSubmit, loading }) => {
       <h4 className="mb-3 text-warning fw-bold border-bottom pb-2">HAZARD REPORT FOLLOW-UP</h4>
       <div className="alert alert-info small">
         <strong>Note:</strong> This form is for supervisor, program manager, and JHSC follow-up on hazard reports.
-       </div>
-    <div className="mb-3">
+      </div>
+      <div className="mb-3">
         <label className="form-label">Hazard id:</label>
         <input name="hazard_id" className="form-control" rows="4" onChange={handleChange}></input>
-    </div>
+      </div>
 
       {/* --- SUPERVISOR ACTION --- */}
       <h5 className="bg-secondary text-white p-2 border rounded mt-4">Action taken by supervisor/coordinator (Hazard Report)</h5>
@@ -353,7 +353,7 @@ const IncidentForm = ({ onSubmit, loading }) => {
     workers: "", clients: "", others: "",
     witness_name: "", witness_job_title: "", witness_contact: "",
     // Part 3
-    incident_date: "", incident_time: "", inclident_location: "",
+    incident_date: "", incident_time: "", incident_location: "",
     incident_description: "", // "What was the incident?"
     who_involved: "", // "Who is involved in the incident?"
     who_reported: "", // "Who reported the incident?"
@@ -471,8 +471,8 @@ const IncidentForm = ({ onSubmit, loading }) => {
 // --- 3. INCIDENT REPORT FOLLOW-UP (Supervisor/Manager) ---
 const IncidentFollowupForm = ({ onSubmit, loading }) => {
   const [data, setData] = useState({
-      // Part 4 Supervisor
-    incident_id:0,
+    // Part 4 Supervisor
+    incident_id: 0,
     reported_to_supervisor_by: "", reported_to_supervisor_time: "",
     supervisor_witness_statement: "", // "What did the worker/client/witness state?"
     reporting_delays: "", // "Were there any delays..."
@@ -733,8 +733,8 @@ const InjuryForm = ({ onSubmit, loading }) => {
 // --- 5. INJURY REPORT FOLLOW-UP (Supervisor/Manager) ---
 const InjuryFollowupForm = ({ onSubmit, loading }) => {
   const [data, setData] = useState({
-      // Part 8
-    injury_report_id:0,
+    // Part 8
+    injury_report_id: 0,
     rtw_initiated: "No", investigation_started: "No", copy_provided_to_hr: "No",
     supervisor_steps_resolve: "",
     supervisor_signature: "", supervisor_sign_date: "", supervisor_sign_time: "",
@@ -759,7 +759,7 @@ const InjuryFollowupForm = ({ onSubmit, loading }) => {
       <div className="alert alert-danger small">
         <strong>Note:</strong> This form is for supervisor and program manager follow-up on employee injury/illness reports.
       </div>
-          <div className="col-md-6"><label className="form-label">Injury Report ID</label><input required name="injury_report_id" className="form-control" onChange={handleChange} /></div>
+      <div className="col-md-6"><label className="form-label">Injury Report ID</label><input required name="injury_report_id" className="form-control" onChange={handleChange} /></div>
       {/* Part 8 Supervisor Action */}
       <h5 className="bg-secondary text-white p-2 border rounded mt-4">Action taken by supervisor/coordinator (Injury Report)</h5>
       <div className="row g-3">
