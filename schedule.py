@@ -1458,6 +1458,41 @@ def task_complete():
 
 #######employes
 
+@app.route("/client-tasks/<int:client_id>", methods=["GET"])
+def get_client_tasks(client_id):
+    try:
+        # 1. Get all shift IDs for this client
+        shifts = supabase.table("shift").select("shift_id").eq("client_id", client_id).execute()
+        
+        if not shifts.data:
+            return jsonify({
+                "success": True, 
+                "tasks": []
+            }), 200
+            
+        shift_ids = [s['shift_id'] for s in shifts.data]
+        
+        if not shift_ids:
+             return jsonify({
+                "success": True, 
+                "tasks": []
+            }), 200
+
+        # 2. Get tasks for these shifts
+        tasks = supabase.table("tasks").select("*").in_("shift_id", shift_ids).order("task_id", desc=True).execute()
+        
+        return jsonify({
+            "success": True, 
+            "tasks": tasks.data
+        }), 200
+
+    except Exception as e:
+        print("GET CLIENT TASKS ERROR:", e)
+        return jsonify({
+            "success": False, 
+            "message": str(e)
+        }), 500
+
 @app.route('/employees/simple', methods=['GET'])
 def get_employees_simple():
     """Get simple employee list for dropdowns"""

@@ -89,6 +89,8 @@ export default function ClientDetailsPage() {
   const [documents, setDocuments] = useState([]);
   const [emergencyContacts, setEmergencyContacts] = useState([]);
   const [progressNotes, setProgressNotes] = useState([]);
+  const [adminNotes, setAdminNotes] = useState([]);
+  const [clientTasks, setClientTasks] = useState([]);
 
   // --- State: Editing ---
   const [isEditing, setIsEditing] = useState(false);
@@ -121,19 +123,31 @@ export default function ClientDetailsPage() {
     }
   };
 
-    const fetchClientDetails = async (clientId) => {
+  const fetchClientDetails = async (clientId) => {
     try {
       const response = await axios.get(`${API_URL}/clients/${clientId}`);
       const clientData = response.data.client || response.data;
       setSelectedClient(clientData);
       setEmergencyContacts(clientData.emergency_contacts || []);
       setProgressNotes(clientData.progress_notes || []);
+      setAdminNotes(clientData.administrative_notes || []);
+      fetchClientTasks(clientId);
     } catch (error) {
       console.error("Error fetching client details:", error);
     }
   };
 
-
+  const fetchClientTasks = async (clientId) => {
+    try {
+      const response = await fetch(`${API_URL}/client-tasks/${clientId}`);
+      if (response.ok) {
+        const data = await response.json();
+        setClientTasks(data.tasks || []);
+      }
+    } catch (error) {
+      console.error("Error fetching client tasks:", error);
+    }
+  };
 
   // --- Edit Handlers ---
   const handleEditClick = () => {
@@ -194,21 +208,26 @@ export default function ClientDetailsPage() {
       client.client_id.toString().includes(search.trim()) ||
       client.first_name?.toLowerCase().includes(search.toLowerCase()) ||
       client.last_name?.toLowerCase().includes(search.toLowerCase());
-    const matchesLocation = locationFilter === "" || 
-      client.address_line1?.toLowerCase().includes(locationFilter.toLowerCase()) ||
-      client.city?.toLowerCase().includes(locationFilter.toLowerCase());
+    const matchesLocation = locationFilter === "" ||
+      client.service_type?.toLowerCase().includes(locationFilter.toLowerCase());
     return matchesSearch && matchesLocation;
   });
 
-  const locations = [...new Set(clients.map(c => c.address_line1).filter(Boolean))].sort();
+  const locations = [
+    "85 Neeve",
+    "87 Neeve",
+    "Willow Place",
+    "Outreach",
+    "Assisted Living"
+  ];
 
   const tabs = [
-    { id: 'profile', label: 'Profile & Care', icon: 'bi-person-circle' },
-    { id: 'medical', label: 'Medical History', icon: 'bi-heart-pulse' },
-    { id: 'contacts', label: 'Emergency Contacts', icon: 'bi-telephone' },
+    { id: 'profile', label: 'Profile', icon: 'bi-person-circle' },
+    { id: 'care', label: 'Care', icon: 'bi-activity' },
     { id: 'schedule', label: 'Schedule', icon: 'bi-calendar-check' },
     { id: 'documents', label: 'Documents', icon: 'bi-file-earmark-text' },
     { id: 'notes', label: 'Progress Notes', icon: 'bi-journal-text' },
+    { id: 'admin_notes', label: 'Administrative Notes', icon: 'bi-journal-check' },
   ];
 
   if (loading) {
@@ -233,58 +252,58 @@ export default function ClientDetailsPage() {
           <p className="text-muted">Comprehensive client information and care management</p>
         </div>
         <div className="d-flex gap-2">
-  {!selectedClient && (
-    <div className="btn-group">
-      <button
-        className="btn btn-dark dropdown-toggle"
-        data-bs-toggle="dropdown"
-        type="button"
-      >
-        <i className="bi bi-database-down me-1"></i> Bulk Export
-      </button>
-      <ul className="dropdown-menu dropdown-menu-end">
-        <li>
-          <button
-            className="dropdown-item"
-            onClick={() => exportToJSON(filteredClients, "clients_bulk")}
-          >
-            Export All (JSON)
-          </button>
-        </li>
-        <li>
-          <button
-            className="dropdown-item"
-            onClick={() => exportToCSV(filteredClients, "clients_bulk")}
-          >
-            Export All (CSV)
-          </button>
-        </li>
-        <li>
-          <button
-            className="dropdown-item"
-            onClick={() => exportToPDF(filteredClients, "clients_bulk")}
-          >
-            Export All (PDF)
-          </button>
-        </li>
-      </ul>
-    </div>
-  )}
+          {!selectedClient && (
+            <div className="btn-group">
+              <button
+                className="btn btn-dark dropdown-toggle"
+                data-bs-toggle="dropdown"
+                type="button"
+              >
+                <i className="bi bi-database-down me-1"></i> Bulk Export
+              </button>
+              <ul className="dropdown-menu dropdown-menu-end">
+                <li>
+                  <button
+                    className="dropdown-item"
+                    onClick={() => exportToJSON(filteredClients, "clients_bulk")}
+                  >
+                    Export All (JSON)
+                  </button>
+                </li>
+                <li>
+                  <button
+                    className="dropdown-item"
+                    onClick={() => exportToCSV(filteredClients, "clients_bulk")}
+                  >
+                    Export All (CSV)
+                  </button>
+                </li>
+                <li>
+                  <button
+                    className="dropdown-item"
+                    onClick={() => exportToPDF(filteredClients, "clients_bulk")}
+                  >
+                    Export All (PDF)
+                  </button>
+                </li>
+              </ul>
+            </div>
+          )}
 
-  {selectedClient && (
-    <button
-      className="btn btn-outline-secondary"
-      onClick={() => {
-        setSelectedClient(null);
-        setIsEditing(false);
-        setSearch("");
-      }}
-    >
-      <i className="bi bi-arrow-left me-2"></i>
-      Back to List
-    </button>
-  )}
-</div>
+          {selectedClient && (
+            <button
+              className="btn btn-outline-secondary"
+              onClick={() => {
+                setSelectedClient(null);
+                setIsEditing(false);
+                setSearch("");
+              }}
+            >
+              <i className="bi bi-arrow-left me-2"></i>
+              Back to List
+            </button>
+          )}
+        </div>
 
       </div>
 
@@ -316,9 +335,9 @@ export default function ClientDetailsPage() {
                     onChange={(e) => setLocationFilter(e.target.value)}
                     list="locationList"
                   />
-                  <button 
-                    className="btn btn-outline-secondary dropdown-toggle" 
-                    type="button" 
+                  <button
+                    className="btn btn-outline-secondary dropdown-toggle"
+                    type="button"
                     data-bs-toggle="dropdown"
                     style={{ borderLeft: 'none' }}
                   >
@@ -334,16 +353,16 @@ export default function ClientDetailsPage() {
                     <li><a className="dropdown-item" href="#" onClick={(e) => { e.preventDefault(); setLocationFilter(''); }}>All Locations</a></li>
                     <li><hr className="dropdown-divider" /></li>
                     {locations.map(loc => (
-                        <li key={loc}>
-                          <a
-                            className="dropdown-item"
-                            href="#"
-                            onClick={(e) => { e.preventDefault(); setLocationFilter(loc); }}
-                          >
-                            {loc}
-                          </a>
-                        </li>
-                      ))}
+                      <li key={loc}>
+                        <a
+                          className="dropdown-item"
+                          href="#"
+                          onClick={(e) => { e.preventDefault(); setLocationFilter(loc); }}
+                        >
+                          {loc}
+                        </a>
+                      </li>
+                    ))}
                   </ul>
                 </div>
                 <datalist id="locationList">
@@ -364,7 +383,7 @@ export default function ClientDetailsPage() {
                     setSelectedClient(client);
                     fetchClientDetails(client.client_id);
                   }}
-                  
+
                 >
                   <div className="card-body text-center p-4">
                     <img
@@ -417,65 +436,65 @@ export default function ClientDetailsPage() {
 
               {/* EDIT ACTION BUTTONS */}
               <div className="d-flex gap-2 flex-wrap">
-  {/* EXPORT BUTTON */}
-  <div className="btn-group">
-    <button
-      className="btn btn-outline-dark dropdown-toggle"
-      data-bs-toggle="dropdown"
-      type="button"
-    >
-      <i className="bi bi-download me-1"></i> Export
-    </button>
-    <ul className="dropdown-menu dropdown-menu-end">
-      <li>
-        <button
-          className="dropdown-item"
-          onClick={() =>
-            exportToJSON(selectedClient, `client_${selectedClient.client_id}`)
-          }
-        >
-          Export as JSON
-        </button>
-      </li>
-      <li>
-        <button
-          className="dropdown-item"
-          onClick={() =>
-            exportToCSV(selectedClient, `client_${selectedClient.client_id}`)
-          }
-        >
-          Export as CSV
-        </button>
-      </li>
-      <li>
-        <button
-          className="dropdown-item"
-          onClick={() =>
-            exportToPDF(selectedClient, `client_${selectedClient.client_id}`)
-          }
-        >
-          Export as PDF
-        </button>
-      </li>
-    </ul>
-  </div>
+                {/* EXPORT BUTTON */}
+                <div className="btn-group">
+                  <button
+                    className="btn btn-outline-dark dropdown-toggle"
+                    data-bs-toggle="dropdown"
+                    type="button"
+                  >
+                    <i className="bi bi-download me-1"></i> Export
+                  </button>
+                  <ul className="dropdown-menu dropdown-menu-end">
+                    <li>
+                      <button
+                        className="dropdown-item"
+                        onClick={() =>
+                          exportToJSON(selectedClient, `client_${selectedClient.client_id}`)
+                        }
+                      >
+                        Export as JSON
+                      </button>
+                    </li>
+                    <li>
+                      <button
+                        className="dropdown-item"
+                        onClick={() =>
+                          exportToCSV(selectedClient, `client_${selectedClient.client_id}`)
+                        }
+                      >
+                        Export as CSV
+                      </button>
+                    </li>
+                    <li>
+                      <button
+                        className="dropdown-item"
+                        onClick={() =>
+                          exportToPDF(selectedClient, `client_${selectedClient.client_id}`)
+                        }
+                      >
+                        Export as PDF
+                      </button>
+                    </li>
+                  </ul>
+                </div>
 
-  {/* EDIT / SAVE CONTROLS */}
-  {isEditing ? (
-    <>
-      <button className="btn btn-success" onClick={saveClient}>
-        <i className="bi bi-check-lg me-2"></i>Save Changes
-      </button>
-      <button className="btn btn-secondary" onClick={handleCancelEdit}>
-        <i className="bi bi-x-lg me-2"></i>Cancel
-      </button>
-    </>
-  ) : (
-    <button className="btn btn-primary" onClick={handleEditClick}>
-      <i className="bi bi-pencil-square me-2"></i>Edit Client
-    </button>
-  )}
-</div>
+                {/* EDIT / SAVE CONTROLS */}
+                {isEditing ? (
+                  <>
+                    <button className="btn btn-success" onClick={saveClient}>
+                      <i className="bi bi-check-lg me-2"></i>Save Changes
+                    </button>
+                    <button className="btn btn-secondary" onClick={handleCancelEdit}>
+                      <i className="bi bi-x-lg me-2"></i>Cancel
+                    </button>
+                  </>
+                ) : (
+                  <button className="btn btn-primary" onClick={handleEditClick}>
+                    <i className="bi bi-pencil-square me-2"></i>Edit Client
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Tabs Navigation */}
@@ -500,21 +519,25 @@ export default function ClientDetailsPage() {
                   isEditing={isEditing}
                   editForm={editForm}
                   handleInputChange={handleInputChange}
-                  handleJsonChange={handleJsonChange}
+                  emergencyContacts={emergencyContacts}
+                  setEmergencyContacts={setEmergencyContacts}
+                  fetchClientDetails={fetchClientDetails}
                 />
               )}
-              {activeTab === 'medical' && (
-                <MedicalHistoryTab
+
+              {activeTab === 'care' && (
+                <CareTab
                   client={selectedClient}
                   isEditing={isEditing}
                   editForm={editForm}
                   handleInputChange={handleInputChange}
+                  clientTasks={clientTasks}
                 />
               )}
-              {activeTab === 'contacts' && <EmergencyContactsTab client={selectedClient} emergencyContacts={emergencyContacts} setEmergencyContacts={setEmergencyContacts} fetchClientDetails={fetchClientDetails} />}
               {activeTab === 'schedule' && <ScheduleTab client={selectedClient} />}
               {activeTab === 'documents' && <DocumentsTab client={selectedClient} documents={documents} setDocuments={setDocuments} />}
               {activeTab === 'notes' && <ProgressNotesTab client={selectedClient} progressNotes={progressNotes} setProgressNotes={setProgressNotes} fetchClientDetails={fetchClientDetails} />}
+              {activeTab === 'admin_notes' && <AdministrativeNotesTab client={selectedClient} adminNotes={adminNotes} setAdminNotes={setAdminNotes} fetchClientDetails={fetchClientDetails} />}
             </div>
           </div>
         </div>
@@ -525,8 +548,8 @@ export default function ClientDetailsPage() {
 
 // --- SUB-COMPONENTS ---
 
-// 1. Profile Tab (Merged with Care Mgmt, Instructions, Payroll)
-function ProfileTab({ client, isEditing, editForm, handleInputChange, handleJsonChange }) {
+// 1. Profile Tab (Modified: Includes Personal Info, Medical, Contacts)
+function ProfileTab({ client, isEditing, editForm, handleInputChange, emergencyContacts, setEmergencyContacts, fetchClientDetails }) {
   if (isEditing) {
     return (
       <div className="row g-3">
@@ -547,11 +570,70 @@ function ProfileTab({ client, isEditing, editForm, handleInputChange, handleJson
           <label className="form-label">Email</label>
           <input className="form-control" name="email" value={editForm.email || ''} onChange={handleInputChange} />
         </div>
-
-        <h5 className="text-primary border-bottom pb-2 mt-4">Care Management (New Fields)</h5>
         <div className="col-12">
-          <label className="form-label fw-bold">Care Management</label>
-          <textarea className="form-control" name="care_mgmt" rows="2" value={editForm.care_mgmt || ''} onChange={handleInputChange} />
+          <label className="form-label">Address</label>
+          <input className="form-control" name="address_line1" value={editForm.address_line1 || ''} onChange={handleInputChange} />
+        </div>
+        <div className="col-md-6">
+          <label className="form-label">City</label>
+          <input className="form-control" name="city" value={editForm.city || ''} onChange={handleInputChange} />
+        </div>
+        <div className="col-md-6">
+          <label className="form-label">Postal Code</label>
+          <input className="form-control" name="postal_code" value={editForm.postal_code || ''} onChange={handleInputChange} />
+        </div>
+
+        {/* Medical Section (Edit Mode) */}
+        <div className="col-12 mt-4">
+          <MedicalHistoryTab client={client} isEditing={true} editForm={editForm} handleInputChange={handleInputChange} />
+        </div>
+      </div>
+    );
+  }
+
+  // View Mode
+  return (
+    <div className="row g-3">
+      <SectionHeader icon="bi-person-badge" title="Personal Information" />
+      <InfoField icon="bi-person" label="First Name" value={client.first_name} />
+      <InfoField icon="bi-person-fill" label="Last Name" value={client.last_name} />
+      <InfoField icon="bi-telephone" label="Phone" value={client.phone} />
+      <InfoField icon="bi-envelope" label="Email" value={client.email} />
+      <SectionHeader icon="bi-geo-alt" title="Address" />
+      <InfoField icon="bi-house" label="Address" value={client.address_line1} />
+      <div className="col-md-6">
+        <div className="row g-2">
+          <InfoField icon="bi-building" label="City" value={client.city} />
+        </div>
+      </div>
+      <InfoField icon="bi-postage" label="Postal Code" value={client.postal_code} />
+
+      {/* Embedded Medical & Contacts */}
+      <div className="col-12 mt-2">
+        <MedicalHistoryTab client={client} isEditing={false} />
+      </div>
+
+      <div className="col-12 mt-2">
+        <EmergencyContactsTab
+          client={client}
+          emergencyContacts={emergencyContacts}
+          setEmergencyContacts={setEmergencyContacts}
+          fetchClientDetails={fetchClientDetails}
+        />
+      </div>
+    </div>
+  );
+}
+
+// 1.5 Care Tab (New Logic: Includes Fetched Tasks)
+function CareTab({ client, isEditing, editForm, handleInputChange, clientTasks }) {
+  if (isEditing) {
+    return (
+      <div className="row g-3">
+        <h5 className="text-primary border-bottom pb-2">Care Management</h5>
+        <div className="col-12">
+          <label className="form-label fw-bold">Care Management Details</label>
+          <textarea className="form-control" name="care_mgmt" rows="3" value={editForm.care_mgmt || ''} onChange={handleInputChange} />
         </div>
         <div className="col-md-6">
           <label className="form-label fw-bold">Individual Service</label>
@@ -573,49 +655,80 @@ function ProfileTab({ client, isEditing, editForm, handleInputChange, handleJson
     );
   }
 
-  // View Mode
   return (
     <div className="row g-3">
-      <SectionHeader icon="bi-person-badge" title="Personal Information" />
-      <InfoField icon="bi-person" label="First Name" value={client.first_name} />
-      <InfoField icon="bi-person-fill" label="Last Name" value={client.last_name} />
-      <InfoField icon="bi-telephone" label="Phone" value={client.phone} />
-      <InfoField icon="bi-envelope" label="Email" value={client.email} />
-
       <SectionHeader icon="bi-clipboard-check" title="Care Management Plan" />
 
-      {/* New Fields Display */}
+      {/* Care Management Field */}
       <div className="col-12">
-        {client.care_mgmt && (
+        {client.care_mgmt ? (
           <div className="alert alert-light border">
-            <strong className="d-block mb-1 text-primary">Care Management:</strong>
+            <strong className="d-block mb-1 text-primary">Care Management Details:</strong>
             {client.care_mgmt}
+          </div>
+        ) : (
+          <div className="text-muted fst-italic">No care management details provided.</div>
+        )}
+      </div>
+
+
+
+      <InfoField icon="bi-activity" label="Individual Service" value={client.individual_service} />
+
+      {/* Dynamic Tasks Section */}
+      <div className="col-12 mt-3">
+        <h6 className="text-secondary border-bottom pb-2"><i className="bi bi-list-check me-2"></i>Assigned Tasks</h6>
+        {clientTasks && clientTasks.length > 0 ? (
+          <ul className="list-group">
+            {clientTasks.map(task => (
+              <li key={task.task_id} className="list-group-item d-flex justify-content-between align-items-center">
+                <div>
+                  <span className={`badge me-2 ${task.status ? 'bg-success' : 'bg-warning text-dark'}`}>
+                    {task.status ? 'Completed' : 'Pending'}
+                  </span>
+                  {task.details}
+                </div>
+                <small className="text-muted">{new Date(task.task_created).toLocaleDateString()}</small>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div className="text-muted fst-italic p-2 border rounded bg-light">
+            No active tasks assigned in current shifts.
           </div>
         )}
       </div>
 
-      <InfoField icon="bi-activity" label="Individual Service" value={client.individual_service} />
-      <InfoField icon="bi-list-check" label="Tasks" value={client.tasks} />
+      <SectionHeader icon="bi-journal-bookmark" title="Notes & Instructions" />
 
-      {client.coordinator_notes && (
-        <div className="col-12 mt-2">
-          <div className="alert alert-warning">
-            <i className="bi bi-exclamation-circle-fill me-2"></i>
-            <strong>Coordinator Notes:</strong> {client.coordinator_notes}
+      {
+        client.coordinator_notes && (
+          <div className="col-12 mt-2">
+            <div className="alert alert-warning">
+              <i className="bi bi-exclamation-circle-fill me-2"></i>
+              <strong>Coordinator Notes:</strong> {client.coordinator_notes}
+            </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
-      {client.instructions && (
-        <div className="col-12 mt-2">
-          <div className="alert alert-info">
-            <i className="bi bi-info-circle-fill me-2"></i>
-            <strong>Special Instructions:</strong><br />
-            {client.instructions}
+      {
+        client.instructions && (
+          <div className="col-12 mt-2">
+            <div className="alert alert-info">
+              <i className="bi bi-info-circle-fill me-2"></i>
+              <strong>Special Instructions:</strong><br />
+              {client.instructions}
+            </div>
           </div>
-        </div>
-      )}
-    </div>
+        )
+      }
+      {
+        !client.coordinator_notes && !client.instructions && (
+          <div className="col-12 text-muted fst-italic">No special notes or instructions.</div>
+        )
+      }
+    </div >
   );
 }
 
@@ -730,7 +843,7 @@ function EmergencyContactsTab({ client, emergencyContacts, setEmergencyContacts,
 
   const handleDeleteContact = async (contactId) => {
     if (!window.confirm("Delete this contact?")) return;
-    
+
     try {
       const updatedContacts = emergencyContacts.filter(c => c.id !== contactId);
       const response = await fetch(`${API_URL}/clients/${client.client_id}`, {
@@ -755,11 +868,11 @@ function EmergencyContactsTab({ client, emergencyContacts, setEmergencyContacts,
     <div>
       <div className="d-flex justify-content-between align-items-center mb-4">
         <h5 className="m-0"><i className="bi bi-telephone-plus me-2"></i>Emergency Contacts</h5>
-        <button 
+        <button
           className="btn btn-primary btn-sm rounded-pill px-3"
           onClick={() => setIsAdding(!isAdding)}
         >
-          <i className={`bi ${isAdding ? 'bi-x-circle' : 'bi-plus-circle'} me-1`}></i> 
+          <i className={`bi ${isAdding ? 'bi-x-circle' : 'bi-plus-circle'} me-1`}></i>
           {isAdding ? 'Cancel' : 'Add Contact'}
         </button>
       </div>
@@ -773,7 +886,7 @@ function EmergencyContactsTab({ client, emergencyContacts, setEmergencyContacts,
                 className="form-control"
                 placeholder="Name"
                 value={newContact.name}
-                onChange={(e) => setNewContact({...newContact, name: e.target.value})}
+                onChange={(e) => setNewContact({ ...newContact, name: e.target.value })}
               />
             </div>
             <div className="col-md-6">
@@ -781,7 +894,7 @@ function EmergencyContactsTab({ client, emergencyContacts, setEmergencyContacts,
                 className="form-control"
                 placeholder="Relationship"
                 value={newContact.relationship}
-                onChange={(e) => setNewContact({...newContact, relationship: e.target.value})}
+                onChange={(e) => setNewContact({ ...newContact, relationship: e.target.value })}
               />
             </div>
             <div className="col-md-6">
@@ -789,7 +902,7 @@ function EmergencyContactsTab({ client, emergencyContacts, setEmergencyContacts,
                 className="form-control"
                 placeholder="Phone"
                 value={newContact.phone}
-                onChange={(e) => setNewContact({...newContact, phone: e.target.value})}
+                onChange={(e) => setNewContact({ ...newContact, phone: e.target.value })}
               />
             </div>
             <div className="col-md-6">
@@ -797,7 +910,7 @@ function EmergencyContactsTab({ client, emergencyContacts, setEmergencyContacts,
                 className="form-control"
                 placeholder="Email"
                 value={newContact.email}
-                onChange={(e) => setNewContact({...newContact, email: e.target.value})}
+                onChange={(e) => setNewContact({ ...newContact, email: e.target.value })}
               />
             </div>
             <div className="col-12">
@@ -818,7 +931,7 @@ function EmergencyContactsTab({ client, emergencyContacts, setEmergencyContacts,
                   <div className="fw-bold">{contact.name}</div>
                   <div className="d-flex gap-2">
                     <span className="badge bg-info text-dark">{contact.relationship}</span>
-                    <button 
+                    <button
                       className="btn btn-sm btn-outline-danger"
                       onClick={() => handleDeleteContact(contact.id)}
                     >
@@ -915,14 +1028,14 @@ function ProgressNotesTab({ client, progressNotes, setProgressNotes, fetchClient
       };
 
       const updatedNotes = [noteEntry, ...progressNotes];
-      
+
       const response = await fetch(`${API_URL}/clients/${client.client_id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ progress_notes: updatedNotes })
       });
 
-     if (response.ok) {
+      if (response.ok) {
         await fetchClientDetails(client.client_id);
         setNewNote('');
         alert("Note published successfully!");
@@ -940,7 +1053,7 @@ function ProgressNotesTab({ client, progressNotes, setProgressNotes, fetchClient
 
     try {
       const updatedNotes = progressNotes.filter(n => n.id !== noteId);
-      
+
       const response = await fetch(`${API_URL}/clients/${client.client_id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -963,9 +1076,9 @@ function ProgressNotesTab({ client, progressNotes, setProgressNotes, fetchClient
     <div>
       <div className="card border-0 shadow-sm p-4 mb-4">
         <h6 className="mb-3"><i className="bi bi-pencil-square me-2"></i>Add Progress Note</h6>
-        <textarea 
-          className="form-control mb-3" 
-          placeholder="Write a progress note..." 
+        <textarea
+          className="form-control mb-3"
+          placeholder="Write a progress note..."
           rows="4"
           value={newNote}
           onChange={(e) => setNewNote(e.target.value)}
@@ -986,7 +1099,7 @@ function ProgressNotesTab({ client, progressNotes, setProgressNotes, fetchClient
                     <i className="bi bi-person-circle me-1"></i>
                     {note.author} • {new Date(note.timestamp).toLocaleString()}
                   </div>
-                  <button 
+                  <button
                     className="btn btn-sm btn-outline-danger"
                     onClick={() => handleDeleteNote(note.id)}
                   >
@@ -1000,6 +1113,118 @@ function ProgressNotesTab({ client, progressNotes, setProgressNotes, fetchClient
         ) : (
           <div className="text-center py-4 text-muted">
             No progress notes yet.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// 7. Administrative Notes Tab
+function AdministrativeNotesTab({ client, adminNotes, setAdminNotes, fetchClientDetails }) {
+  const [newNote, setNewNote] = useState('');
+
+  const handleAddNote = async () => {
+    if (!newNote.trim()) {
+      alert("Please write a note before publishing.");
+      return;
+    }
+
+    try {
+      const noteEntry = {
+        id: Date.now(),
+        note: newNote,
+        timestamp: new Date().toISOString(),
+        author: 'Administrator'
+      };
+
+      const updatedNotes = [noteEntry, ...adminNotes];
+
+      const response = await fetch(`${API_URL}/clients/${client.client_id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ administrative_notes: updatedNotes })
+      });
+
+      if (response.ok) {
+        await fetchClientDetails(client.client_id);
+        setNewNote('');
+        alert("Administrative note added successfully!");
+      } else {
+        alert("Failed to add administrative note.");
+      }
+    } catch (error) {
+      console.error('Error adding admin note:', error);
+      alert("Error publishing admin note.");
+    }
+  };
+
+  const handleDeleteNote = async (noteId) => {
+    if (!window.confirm("Delete this administrative note?")) return;
+
+    try {
+      const updatedNotes = adminNotes.filter(n => n.id !== noteId);
+
+      const response = await fetch(`${API_URL}/clients/${client.client_id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ administrative_notes: updatedNotes })
+      });
+
+      if (response.ok) {
+        await fetchClientDetails(client.client_id);
+        alert("Administrative note deleted successfully!");
+      } else {
+        alert("Failed to delete administrative note.");
+      }
+    } catch (error) {
+      console.error('Error deleting admin note:', error);
+      alert("Error deleting admin note.");
+    }
+  };
+
+  return (
+    <div>
+      <div className="card border-0 shadow-sm p-4 mb-4 bg-light">
+        <h6 className="mb-3 text-primary"><i className="bi bi-shield-lock me-2"></i>Administrative Log</h6>
+        <textarea
+          className="form-control mb-3"
+          placeholder="Log an administrative note (visible to admins only)..."
+          rows="3"
+          value={newNote}
+          onChange={(e) => setNewNote(e.target.value)}
+        ></textarea>
+        <button className="btn btn-primary" onClick={handleAddNote}>
+          <i className="bi bi-plus-circle me-2"></i>Add Admin Note
+        </button>
+      </div>
+
+      <div className="mt-4">
+        <h6 className="mb-3"><i className="bi bi-list-check me-2"></i>Log History</h6>
+        {adminNotes.length > 0 ? (
+          <div className="d-flex flex-column gap-3">
+            {adminNotes.map((note) => (
+              <div key={note.id} className="card border-0 shadow-sm p-3 border-start border-4 border-primary">
+                <div className="d-flex justify-content-between align-items-start mb-2">
+                  <div className="small text-muted fw-bold">
+                    <i className="bi bi-person-badge-fill me-1"></i>
+                    {note.author} • {new Date(note.timestamp).toLocaleString()}
+                  </div>
+                  <button
+                    className="btn btn-sm btn-outline-secondary"
+                    onClick={() => handleDeleteNote(note.id)}
+                    title="Delete Note"
+                  >
+                    <i className="bi bi-x-lg"></i>
+                  </button>
+                </div>
+                <p className="mb-0 text-dark">{note.note}</p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-4 text-muted border rounded border-dashed">
+            No administrative notes logged yet.
           </div>
         )}
       </div>
