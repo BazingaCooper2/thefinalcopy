@@ -2731,159 +2731,13 @@ def update_employee_settings(emp_id):
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route("/masterSchedule/<service>", methods=["GET"])
-def masterSchedule(service: str):
-    print(service)
-    emp_res = supabase.table("employee") \
-        .select("emp_id, first_name, address") \
-        .eq("service_type", service) \
-        .execute()
-    employees = emp_res.data
-
-    start_date = date.today()
-    dates = get_6_week_dates(start_date)
-
-    output_employees = []
-
-    for emp in employees:
-        print(emp["first_name"])
-        shifts = []
-        #print(dates[-1])
-        # 3️⃣ Get all shifts for this employee in date range
-        shift_res = supabase.table("daily_shift") \
-            .select("*") \
-            .eq("emp_id", emp["emp_id"]) \
-            .gte("shift_date", dates[0]) \
-            .lte("shift_date", dates[-1]) \
-            .execute()
-        #print(shift_res)
-        shift_map = {
-            s["shift_date"]: s for s in shift_res.data
-        }
-        
-        for d in dates:
-            #print(shift_map[str(d)])
-            shift = shift_map.get(d.isoformat())
-            print(shift)
-            if not shift:
-                # open shift / empty
-                shifts.append({
-                    "time": "",
-                    "type": "open",
-                    "training": False
-                })
-                continue
-            
-            # 4️⃣ Apply shift notation
-            # shift_date = datetime.fromisoformat(shift["shift_date"])
-            # start_time = datetime.fromisoformat(shift["shift_start_time"])
-            # end_time = datetime.fromisoformat(shift["shift_end_time"])
-            shift_date = datetime.strptime(
-                shift["shift_date"],
-                "%Y-%m-%d"
-            ).replace(tzinfo=timezone.utc)
-
-            # Parse start & end times (ISO UTC)
-            start_time = datetime.strptime(
-                shift["shift_start_time"],
-                "%Y-%m-%dT%H:%M:%SZ"
-            ).replace(tzinfo=timezone.utc)
-
-            end_time = datetime.strptime(
-                shift["shift_end_time"],
-                "%Y-%m-%dT%H:%M:%SZ"
-            ).replace(tzinfo=timezone.utc)
-
-            if service == "Outreach":
-                time_code = f"{start_time.strftime('%H:%M:%S')}-{end_time.strftime('%H:%M:%S')}"
-
-            else:
-                noon_cutoff = shift_date.replace(hour=12, minute=0, second=0)
-                evening_cutoff = shift_date.replace(hour=18, minute=0, second=0)
-
-                if end_time <= noon_cutoff:
-                    shift["shift_code"] = "day"        # d
-                elif start_time > noon_cutoff and end_time <= evening_cutoff:
-                    shift["shift_code"] = "noon"       # n
-                else:
-                    shift["shift_code"] = "evening"    # e
-
-                time_code = SHIFT_CONVENTIONS[service][shift["shift_code"]]
-            
-            shifts.append({
-                "time": time_code,
-                "type": SHIFT_TYPE_MAP.get(shift["shift_type"], "flw-rtw"),
-                "training": shift.get("training", False)
-            })
-        
-        leave_res = supabase.table("leaves") \
-            .select("*") \
-            .eq("emp_id", emp["emp_id"]) \
-            .gte("leave_start_date", dates[0]) \
-            .lte("leave_end_date", dates[-1]) \
-            .execute()
-        leaves = leave_res.data or []
-        print(leaves)
-        leave_map = {}
-
-        for leave in leaves:
-            start = datetime.fromisoformat(leave["leave_start_date"]).date()
-            end = datetime.fromisoformat(leave["leave_end_date"]).date()
-
-            d = start
-            while d <= end:
-                leave_map[d] = leave
-                d += timedelta(days=1)
-
-        for idx,d in enumerate(dates):
-            if d in leave_map:
-                leave = leave_map[d]
-
-                leave_type = leave.get("leave_type", "").lower()
-                
-                # Determine shift type (color)
-                if leave_type == "sick paid" or leave_type == "sick unpaid":
-                    shift_type = SHIFT_TYPE_MAP["sick"]
-                elif leave_type == "maternity/paternity leave" or leave_type == "wsib leave (with seniority)" or leave_type == "esa leave + seniority" or leave_type == "unpaid leave + no seniority":
-                    shift_type = SHIFT_TYPE_MAP["leave"]
-                elif leave_type == "bereavement paid" or leave_type == "bereavement unpaid":
-                    shift_type = SHIFT_TYPE_MAP["bereavement"]
-                elif leave_type == "vacation ft hourly - pay only" or leave_type == "vacation pt and casual - seniority only":  # keeping your DB spelling
-                    shift_type = SHIFT_TYPE_MAP["vacation"]
-                elif leave_type == "float day":
-                    shift_type = SHIFT_TYPE_MAP["float"]
-                else:
-                    shift_type = SHIFT_TYPE_MAP["unavailability"]
-
-                # Override shift
-                shifts[idx]={
-                    "time": "",              # no d/n/e for leave
-                    "type": shift_type,
-                    "training": False
-                }
-                continue
-
-        
-        output_employees.append({
-        "id": emp["emp_id"],
-        "name": emp["first_name"],
-        "address": emp["address"],
-        "shifts": shifts
-        })
-
-    data= jsonify({
-        "weeks": [d.strftime("%d-%b") for d in dates],
-        "employees": output_employees
-    })
-    print(data)
-    return data
-
 SHIFT_CONVENTIONS = {
     "85 Neeve": {"day": "d", "noon": "n", "evening": "e"},
-    "87 Neeve": {"day": "d",  "noon": "n",  "evening": "e"},
+    "87 Neeve": {"day": "d", "noon": "n", "evening": "e"},
     "Willow Place": {"day": "D", "noon": "N", "evening": "E"},
-    "Outreach": None  # handled separately
+    "Outreach": {"day": "O", "noon": "O", "evening": "O"} 
 }
+
 SHIFT_TYPE_MAP = {
     "vacation": "vacation",
     "float": "float",
@@ -2895,8 +2749,127 @@ SHIFT_TYPE_MAP = {
     "leave": "leave",
     "sick": "sick",
     "bereavement": "bereavement",
+    "training": "flw-training" # Added as a safety fallback
 }
+
+def flexible_parse(t_str):
+    if not t_str: return None
+    try:
+        # Standardize: Replace 'T' with space, remove 'Z', ignore offset
+        clean = str(t_str).replace('T', ' ').replace('Z', '').split('+')[0]
+        # Try parsing with time first
+        if ' ' in clean:
+            return datetime.strptime(clean.split('.')[0], "%Y-%m-%d %H:%M:%S")
+        # Fallback to just date
+        return datetime.strptime(clean, "%Y-%m-%d")
+    except Exception:
+        return None
+
+@app.route("/masterSchedule/<service>", methods=["GET"])
+def masterSchedule(service: str):
+    try:
+        from urllib.parse import unquote
+        # 1. Standardize the service name from URL encoding
+        decoded_service = unquote(service).strip()
+        
+        # 2. Fetch employees for this service
+        emp_res = supabase.table("employee").select("*").ilike("service_type", decoded_service).execute()
+        employees = emp_res.data or []
+        
+        if not employees:
+            return jsonify({"weeks": [], "employees": []}), 200
+
+        start_date = date.today()
+        dates = [start_date + timedelta(days=i) for i in range(42)]
+        output_employees = []
+
+        for emp in employees:
+            emp_id = emp.get("emp_id")
+            
+            # Fetch shifts and leaves within the 6-week window
+            shift_res = supabase.table("daily_shift").select("*").eq("emp_id", emp_id).gte("shift_date", dates[0].isoformat()).lte("shift_date", dates[-1].isoformat()).execute()
+            leave_res = supabase.table("leaves").select("*").eq("emp_id", emp_id).gte("leave_start_date", dates[0].isoformat()).lte("leave_end_date", dates[-1].isoformat()).execute()
+            
+            shift_map = {s.get("shift_date"): s for s in (shift_res.data or [])}
+            
+            # 3. Process Leaves (Priority overlay)
+            leave_map = {}
+            for leave in (leave_res.data or []):
+                l_start = flexible_parse(leave.get("leave_start_date"))
+                l_end = flexible_parse(leave.get("leave_end_date"))
+                if l_start and l_end:
+                    curr = l_start.date()
+                    stop = l_end.date()
+                    while curr <= stop:
+                        leave_map[curr] = leave
+                        curr += timedelta(days=1)
+
+            emp_calendar = []
+            for d in dates:
+                # Check for Leave first
+                if d in leave_map:
+                    l_val = leave_map[d].get("leave_type", "").lower()
+                    s_key = "sick" if "sick" in l_val else ("vacation" if "vacation" in l_val else "leave")
+                    emp_calendar.append({
+                        "time": "", 
+                        "type": SHIFT_TYPE_MAP.get(s_key, "unavailable"), 
+                        "training": False
+                    })
+                    continue
+
+                # Check for regular Shifts
+                shift = shift_map.get(d.isoformat())
+                if not shift:
+                    emp_calendar.append({"time": "", "type": "open", "training": False})
+                    continue
+
+                # 4. Process Shift Codes (Day/Noon/Evening)
+                try:
+                    s_dt = flexible_parse(shift.get("shift_start_time"))
+                    e_dt = flexible_parse(shift.get("shift_end_time"))
+                    
+                    if not s_dt or not e_dt:
+                        time_code = ""
+                    elif decoded_service.lower() == "outreach":
+                        time_code = f"{s_dt.strftime('%H:%M')}-{e_dt.strftime('%H:%M')}"
+                    else:
+                        # Determine Shift Convention code
+                        noon = s_dt.replace(hour=12, minute=0, second=0)
+                        evening = s_dt.replace(hour=18, minute=0, second=0)
+                        code = "day" if e_dt <= noon else ("noon" if s_dt > noon and e_dt <= evening else "evening")
+                        
+                        # Safe dictionary lookup with a fallback
+                        conv = SHIFT_CONVENTIONS.get(decoded_service, {"day": "d", "noon": "n", "evening": "e"})
+                        time_code = conv.get(code, "?")
+                except Exception:
+                    time_code = "ERR"
+
+                emp_calendar.append({
+                    "id": shift.get("shift_id"),
+                    "time": time_code,
+                    "type": SHIFT_TYPE_MAP.get(shift.get("shift_type", "open"), "flw-rtw"),
+                    "training": shift.get("training", False)
+                })
+
+            output_employees.append({
+                "id": emp_id,
+                "name": emp.get("first_name", "Unknown"),
+                "address": emp.get("address", ""),
+                "shifts": emp_calendar
+            })
+
+        return jsonify({
+            "weeks": [d.strftime("%d-%b") for d in dates],
+            "employees": output_employees
+        })
+
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return jsonify({"error": str(e), "trace": traceback.format_exc()}), 500
+
 def get_6_week_dates(start_date: date):
+    """Generates a list of 42 date objects starting from the given date."""
     return [start_date + timedelta(days=i) for i in range(42)]
 
 @app.route("/update_master_shift", methods=["POST"])
@@ -3726,7 +3699,6 @@ def admin_dashboard_view():
         "offer_sent_shifts": [normalize(s) for s in offer_sent],
         "starting_soon_shifts": [normalize(s) for s in starting_soon],
     })
-
 
 # --- Run ---
 if __name__ == '__main__':
