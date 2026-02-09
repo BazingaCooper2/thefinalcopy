@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback } from 'react';
+﻿import React, { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 import './DailySchedule.css';
 import API_URL from '../config/api';
@@ -6,10 +6,12 @@ import { getEmpId } from '../utils/emp';
 import ShiftEditModal from './ShiftEditModal'; 
 
 /**
- * DailySchedule Component
- * - Merges Employee Daily Hours and Client Visits into a single row.
- * - Handles robust time parsing for labels and grid positioning.
- * - Manages shift creation, updates, and deletion.
+ * DailySchedule Component - Google Calendar Style
+ * - Minute-level precision for shifts
+ * - Click-and-drag to create shifts with custom duration
+ * - Resize shifts by dragging edges
+ * - Better overlap handling with side-by-side columns
+ * - Smooth drag and drop with minute-level snapping
  */
 export default function DailySchedule() {
     const [currentDate, setCurrentDate] = useState(new Date());
@@ -18,9 +20,15 @@ export default function DailySchedule() {
     const [selectedLocation, setSelectedLocation] = useState('All Locations');
     const [showShiftModal, setShowShiftModal] = useState(false);
     const [selectedShift, setSelectedShift] = useState(null);
+    const [dragCreate, setDragCreate] = useState(null);
+    const [resizing, setResizing] = useState(null);
+    const [draggingShift, setDraggingShift] = useState(null);
     
+    const timelineRef = useRef(null);
     const locations = ['All Locations', '85 Neeve', '87 Neeve', 'Willow Place', 'Outreach', 'Assisted Living', 'Seniors Assisted Living'];
 
+    // Generate 15-minute intervals for precise positioning
+    const PIXELS_PER_HOUR = 60;
     const timeSlots = Array.from({ length: 24 }, (_, hour) => ({
         hour,
         label: `${hour.toString().padStart(2, '0')}:00`
@@ -45,67 +53,224 @@ export default function DailySchedule() {
         fetchScheduleData();
     }, [currentDate, fetchScheduleData]);
 
-    // ========== DRAG AND DROP LOGIC ==========
-    const handleDragStart = (e, shift) => {
-        e.dataTransfer.setData("shift_id", shift.shift_id);
-        e.target.classList.add('dragging');
+    // ========== TIME CONVERSION HELPERS ==========
+    const parseTimeToMinutes = (timeStr) => {
+        // Handle both "2024-01-01T08:30:00" and "2024-01-01 08:30:00" formats
+        const timePart = timeStr?.split(/[T ]/)[1] || "00:00:00";
+        const [hours, minutes] = timePart.split(':').map(Number);
+        return hours * 60 + (minutes || 0);
     };
 
-    const handleDragEnd = (e) => {
-        e.target.classList.remove('dragging');
+    const minutesToTimeString = (minutes, dateStr) => {
+        const hours = Math.floor(minutes / 60);
+        const mins = minutes % 60;
+        return `${dateStr}T${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:00`;
     };
 
-    const handleDrop = async (e, targetEmpId, targetHour) => {
-        e.preventDefault();
-        const shiftId = e.dataTransfer.getData("shift_id");
-        const dateStr = currentDate.toISOString().split('T')[0];
+    const formatTimeDisplay = (timeStr) => {
+        const timePart = timeStr?.split(/[T ]/)[1] || "00:00:00";
+        return timePart.slice(0, 5); // HH:MM
+    };
+
+    const getPositionFromEvent = (e, empId) => {
+        const row = e.currentTarget.closest('.employee-time-slots');
+        if (!row) return null;
         
-        const originalShift = scheduleData.shift.find(s => s.shift_id === parseInt(shiftId));
-        let durationHours = 1; 
-        if (originalShift) {
-            const start = new Date(originalShift.shift_start_time.replace(' ', 'T'));
-            const end = new Date(originalShift.shift_end_time.replace(' ', 'T'));
-            durationHours = (end - start) / (1000 * 60 * 60);
+        const rect = row.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const minutes = Math.round((x / rect.width) * 24 * 60 / 15) * 15; // Snap to 15-min intervals
+        return { empId, minutes: Math.max(0, Math.min(minutes, 24 * 60 - 15)) };
+    };
+
+    // ========== DRAG-TO-CREATE SHIFT ==========
+    const handleMouseDown = (e, empId) => {
+        if (e.target.classList.contains('shift-block') || e.target.closest('.shift-block')) return;
+        
+        const pos = getPositionFromEvent(e, empId);
+        if (!pos) return;
+
+        setDragCreate({
+            empId,
+            startMinutes: pos.minutes,
+            endMinutes: pos.minutes + 60, // Default 1 hour
+            isCreating: true
+        });
+    };
+
+    const handleMouseMove = (e) => {
+        if (dragCreate?.isCreating) {
+            const row = e.target.closest('.employee-time-slots');
+            if (!row) return;
+            
+            const rect = row.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const minutes = Math.round((x / rect.width) * 24 * 60 / 15) * 15;
+            
+            setDragCreate(prev => ({
+                ...prev,
+                endMinutes: Math.max(prev.startMinutes + 15, Math.min(minutes, 24 * 60))
+            }));
+        } else if (resizing) {
+            handleResizeMove(e);
+        } else if (draggingShift) {
+            handleDragMove(e);
         }
+    };
 
-        const newStart = `${dateStr}T${targetHour.toString().padStart(2, '0')}:00:00`;
-        const endHour = Math.min(targetHour + Math.round(durationHours), 23);
-        const newEnd = `${dateStr}T${endHour.toString().padStart(2, '0')}:00:00`;
+    const handleMouseUp = () => {
+        if (dragCreate?.isCreating && dragCreate.endMinutes > dragCreate.startMinutes) {
+            const dateStr = currentDate.toISOString().split('T')[0];
+            setSelectedShift({
+                isNew: true,
+                emp_id: dragCreate.empId,
+                client_id: "",
+                shift_date: dateStr,
+                shift_start_time: minutesToTimeString(dragCreate.startMinutes, dateStr),
+                shift_end_time: minutesToTimeString(dragCreate.endMinutes, dateStr),
+                shift_type: 'regular',
+                shift_status: "Scheduled"
+            });
+            setShowShiftModal(true);
+        }
+        setDragCreate(null);
+        setResizing(null);
+        setDraggingShift(null);
+    };
 
+    useEffect(() => {
+        if (dragCreate?.isCreating || resizing || draggingShift) {
+            document.addEventListener('mousemove', handleMouseMove);
+            document.addEventListener('mouseup', handleMouseUp);
+            return () => {
+                document.removeEventListener('mousemove', handleMouseMove);
+                document.removeEventListener('mouseup', handleMouseUp);
+            };
+        }
+    }, [dragCreate, resizing, draggingShift]);
+
+    // ========== RESIZE SHIFT ==========
+    const handleResizeStart = (e, shift, edge) => {
+        e.stopPropagation();
+        setResizing({
+            shift,
+            edge,
+            startMinutes: parseTimeToMinutes(shift.shift_start_time),
+            endMinutes: parseTimeToMinutes(shift.shift_end_time)
+        });
+    };
+
+    const handleResizeMove = (e) => {
+        if (!resizing) return;
+        
+        const row = e.target.closest('.employee-row')?.querySelector('.employee-time-slots');
+        if (!row) return;
+        
+        const rect = row.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const minutes = Math.round((x / rect.width) * 24 * 60 / 15) * 15;
+        
+        setResizing(prev => {
+            if (prev.edge === 'start') {
+                return { ...prev, startMinutes: Math.max(0, Math.min(minutes, prev.endMinutes - 15)) };
+            } else {
+                return { ...prev, endMinutes: Math.max(prev.startMinutes + 15, Math.min(minutes, 24 * 60)) };
+            }
+        });
+    };
+
+    const saveResize = async () => {
+        if (!resizing) return;
+        
+        const dateStr = currentDate.toISOString().split('T')[0];
         try {
             await axios.post(`${API_URL}/submit`, {
-                shift_id: shiftId,
-                emp_id: targetEmpId,
-                shift_start_time: newStart,
-                shift_end_time: newEnd,
+                shift_id: resizing.shift.shift_id,
+                emp_id: resizing.shift.emp_id,
+                shift_start_time: minutesToTimeString(resizing.startMinutes, dateStr),
+                shift_end_time: minutesToTimeString(resizing.endMinutes, dateStr),
                 shift_date: dateStr,
-                shift_status: "Scheduled"
+                shift_status: resizing.shift.shift_status || "Scheduled"
             });
             fetchScheduleData();
         } catch (err) {
-            console.error("Drop migration failed:", err);
+            console.error("Resize failed:", err);
         }
     };
 
-    // ========== GRID INTERACTIONS ==========
-    const handleTileClick = (empId, hour) => {
-        const dateStr = currentDate.toISOString().split('T')[0];
-        const formattedHour = hour.toString().padStart(2, '0');
-        
-        setSelectedShift({
-            isNew: true,
-            emp_id: empId,
-            client_id: "", // Mandatory selection in Modal to prevent 500 errors
-            shift_date: dateStr,
-            shift_start_time: `${dateStr}T${formattedHour}:00:00`,
-            shift_end_time: `${dateStr}T${(hour + 1).toString().padStart(2, '0')}:00:00`,
-            shift_type: 'regular',
-            shift_status: "Scheduled"
+    useEffect(() => {
+        if (resizing === null) return;
+        const timeout = setTimeout(() => {
+            if (resizing && !resizing.shift) return;
+            saveResize();
+        }, 500);
+        return () => clearTimeout(timeout);
+    }, [resizing]);
+
+    // ========== DRAG SHIFT ==========
+    const handleShiftDragStart = (e, shift) => {
+        e.stopPropagation();
+        setDraggingShift({
+            shift,
+            startMinutes: parseTimeToMinutes(shift.shift_start_time),
+            endMinutes: parseTimeToMinutes(shift.shift_end_time),
+            duration: parseTimeToMinutes(shift.shift_end_time) - parseTimeToMinutes(shift.shift_start_time),
+            offsetX: 0
         });
-        setShowShiftModal(true);
     };
 
-    const handleShiftClick = (shift) => {
+    const handleDragMove = (e) => {
+        if (!draggingShift) return;
+        
+        const row = document.elementFromPoint(e.clientX, e.clientY)?.closest('.employee-row');
+        if (!row) return;
+        
+        const empId = row.getAttribute('data-emp-id');
+        const timeSlots = row.querySelector('.employee-time-slots');
+        if (!timeSlots) return;
+        
+        const rect = timeSlots.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const minutes = Math.round((x / rect.width) * 24 * 60 / 15) * 15;
+        
+        setDraggingShift(prev => ({
+            ...prev,
+            empId: Number(empId),
+            startMinutes: Math.max(0, Math.min(minutes, 24 * 60 - prev.duration)),
+            endMinutes: Math.max(prev.duration, Math.min(minutes + prev.duration, 24 * 60))
+        }));
+    };
+
+    const saveDrag = async () => {
+        if (!draggingShift?.empId) return;
+        
+        const dateStr = currentDate.toISOString().split('T')[0];
+        try {
+            await axios.post(`${API_URL}/submit`, {
+                shift_id: draggingShift.shift.shift_id,
+                emp_id: draggingShift.empId,
+                shift_start_time: minutesToTimeString(draggingShift.startMinutes, dateStr),
+                shift_end_time: minutesToTimeString(draggingShift.endMinutes, dateStr),
+                shift_date: dateStr,
+                shift_status: draggingShift.shift.shift_status || "Scheduled"
+            });
+            fetchScheduleData();
+        } catch (err) {
+            console.error("Drag failed:", err);
+        }
+    };
+
+    useEffect(() => {
+        if (draggingShift === null) return;
+        const timeout = setTimeout(() => {
+            if (draggingShift && !draggingShift.empId) return;
+            saveDrag();
+        }, 500);
+        return () => clearTimeout(timeout);
+    }, [draggingShift]);
+
+    // ========== SHIFT MODAL ==========
+    const handleShiftClick = (e, shift) => {
+        e.stopPropagation();
         setSelectedShift({ ...shift, isNew: false });
         setShowShiftModal(true);
     };
@@ -141,9 +306,9 @@ export default function DailySchedule() {
             (s.date === dateStr || s.shift_start_time?.startsWith(dateStr))
         );
         const totalMinutes = shifts.reduce((acc, s) => {
-            const start = new Date(s.shift_start_time.replace(' ', 'T'));
-            const end = new Date(s.shift_end_time.replace(' ', 'T'));
-            return acc + (end - start) / (1000 * 60);
+            const start = parseTimeToMinutes(s.shift_start_time);
+            const end = parseTimeToMinutes(s.shift_end_time);
+            return acc + (end - start);
         }, 0);
         return (totalMinutes / 60).toFixed(1);
     };
@@ -157,7 +322,54 @@ export default function DailySchedule() {
 
     const getEmployeeShiftsForDate = (empId, date) => {
         const dateStr = date.toISOString().split('T')[0];
-        return scheduleData.shift.filter(s => Number(s.emp_id) === Number(empId) && (s.date === dateStr || s.shift_start_time?.startsWith(dateStr)));
+        return scheduleData.shift.filter(s => 
+            Number(s.emp_id) === Number(empId) && 
+            (s.date === dateStr || s.shift_start_time?.startsWith(dateStr))
+        );
+    };
+
+    // ========== OVERLAP DETECTION ==========
+    const calculateOverlaps = (shifts) => {
+        const sorted = [...shifts].sort((a, b) => 
+            parseTimeToMinutes(a.shift_start_time) - parseTimeToMinutes(b.shift_start_time)
+        );
+        
+        const columns = [];
+        sorted.forEach(shift => {
+            const start = parseTimeToMinutes(shift.shift_start_time);
+            const end = parseTimeToMinutes(shift.shift_end_time);
+            
+            let placed = false;
+            for (let col of columns) {
+                const hasOverlap = col.some(s => {
+                    const sStart = parseTimeToMinutes(s.shift_start_time);
+                    const sEnd = parseTimeToMinutes(s.shift_end_time);
+                    return start < sEnd && end > sStart;
+                });
+                
+                if (!hasOverlap) {
+                    col.push(shift);
+                    placed = true;
+                    break;
+                }
+            }
+            
+            if (!placed) {
+                columns.push([shift]);
+            }
+        });
+        
+        const result = {};
+        columns.forEach((col, colIndex) => {
+            col.forEach(shift => {
+                result[shift.shift_id] = {
+                    column: colIndex,
+                    totalColumns: columns.length
+                };
+            });
+        });
+        
+        return result;
     };
 
     if (loading && scheduleData.employee.length === 0) {
@@ -169,7 +381,20 @@ export default function DailySchedule() {
             <div className="schedule-top-bar">
                 <div className="top-bar-left">
                     <button className="today-btn-small" onClick={() => setCurrentDate(new Date())}>Today</button>
-                    <button className="btn btn-sm btn-primary ms-2" onClick={() => handleTileClick(null, 8)}>
+                    <button className="btn btn-sm btn-primary ms-2" onClick={() => {
+                        const dateStr = currentDate.toISOString().split('T')[0];
+                        setSelectedShift({
+                            isNew: true,
+                            emp_id: scheduleData.employee[0]?.emp_id || null,
+                            client_id: "",
+                            shift_date: dateStr,
+                            shift_start_time: `${dateStr}T08:00:00`,
+                            shift_end_time: `${dateStr}T09:00:00`,
+                            shift_type: 'regular',
+                            shift_status: "Scheduled"
+                        });
+                        setShowShiftModal(true);
+                    }}>
                         <i className="bi bi-plus-circle me-1"></i> Add Shift
                     </button>
                     <span className="current-date-label">
@@ -190,7 +415,9 @@ export default function DailySchedule() {
                         <div className="hours-column-header">Hrs</div>
                         <div className="time-slots-header">
                             {timeSlots.map((slot, i) => (
-                                <div key={i} className="time-slot-header"><div className="time-label">{slot.label}</div></div>
+                                <div key={i} className="time-slot-header">
+                                    <div className="time-label">{slot.label}</div>
+                                </div>
                             ))}
                         </div>
                     </div>
@@ -199,84 +426,176 @@ export default function DailySchedule() {
                         {scheduleData.employee.map((employee) => {
                             const dailyShift = getEmployeeDailyShift(employee.emp_id, currentDate);
                             const clientShifts = getEmployeeShiftsForDate(employee.emp_id, currentDate);
+                            const overlaps = calculateOverlaps(clientShifts);
 
                             return (
-                                <div className="employee-row" key={employee.emp_id}>
+                                <div className="employee-row" key={employee.emp_id} data-emp-id={employee.emp_id}>
                                     <div className="employee-name-cell">
                                         <div className="employee-name">{employee.first_name} {employee.last_name}</div>
-                                        <div className="employee-role" style={{ fontSize: '0.75rem', color: '#666' }}>{employee.service_type || 'Staff'}</div>
+                                        <div className="employee-role" style={{ fontSize: '0.75rem', color: '#666' }}>
+                                            {employee.service_type || 'Staff'}
+                                        </div>
                                     </div>
 
                                     <div className="hours-cell">{getEmployeeTotalHours(employee.emp_id)}h</div>
 
-                                    <div className="employee-time-slots">
-                                        {/* Grid Background */}
+                                    <div 
+                                        className="employee-time-slots"
+                                        onMouseDown={(e) => handleMouseDown(e, employee.emp_id)}
+                                        style={{ position: 'relative', cursor: 'crosshair' }}
+                                    >
+                                        {/* Hour markers */}
                                         {timeSlots.map((slot, i) => (
                                             <div 
                                                 key={i} 
                                                 className="time-slot-cell-placeholder"
-                                                onDragOver={(e) => e.preventDefault()}
-                                                onDrop={(e) => handleDrop(e, employee.emp_id, slot.hour)}
-                                                onClick={() => handleTileClick(employee.emp_id, slot.hour)}
-                                                style={{ gridColumnStart: i + 1 }}
-                                            ></div>
+                                                style={{ 
+                                                    gridColumnStart: i + 1,
+                                                    pointerEvents: 'none'
+                                                }}
+                                            />
                                         ))}
 
-                                        {/* Client Shifts Layer (Top) */}
-                                        {clientShifts.map((shift, i) => {
-                                            const client = getClient(shift.client_id);
-                                            // Handle space or 'T' time separation
-                                            const timeDisplay = shift.shift_start_time?.split(/[T ]/)[1]?.slice(0, 5) || "00:00";
-                                            const endDisplay = shift.shift_end_time?.split(/[T ]/)[1]?.slice(0, 5) || "00:00";
-                                            const startHour = parseInt(timeDisplay.split(':')[0]);
-                                            const endHour = parseInt(endDisplay.split(':')[0]);
-
-                                            return (
-                                                <div 
-                                                    key={`client-${i}`} 
-                                                    className={`shift-block client-shift ${shift.is_leave ? 'leave-alert-border' : ''}`} 
-                                                    draggable
-                                                    onDragStart={(e) => handleDragStart(e, shift)}
-                                                    onDragEnd={handleDragEnd}
-                                                    style={{ 
-                                                        gridColumnStart: startHour + 1, 
-                                                        gridColumnEnd: (endHour === 0 ? 24 : endHour) + 1,
-                                                        zIndex: 30 
-                                                    }}
-                                                    onClick={() => handleShiftClick(shift)}
-                                                >
-                                                    <div className="shift-block-content">
-                                                        <div className="shift-time-range">{timeDisplay} - {endDisplay}</div>
-                                                        <div className="shift-client-info"><i className="bi bi-person"></i> {client?.first_name || 'Client'} {shift.is_leave ? '⚠️' : ''}</div>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
-
-                                        {/* Daily Availability Block (Background) */}
+                                        {/* Daily availability background */}
                                         {dailyShift && dailyShift.shift_start_time && (() => {
-                                            const timeString = dailyShift.shift_start_time.split(/[T ]/)[1]?.slice(0, 5) || "00:00";
-                                            const endString = dailyShift.shift_end_time.split(/[T ]/)[1]?.slice(0, 5) || "00:00";
-                                            const startHour = parseInt(timeString.split(':')[0]);
-                                            const endHour = parseInt(endString.split(':')[0]);
+                                            const startMins = parseTimeToMinutes(dailyShift.shift_start_time);
+                                            const endMins = parseTimeToMinutes(dailyShift.shift_end_time);
+                                            const leftPercent = (startMins / (24 * 60)) * 100;
+                                            const widthPercent = ((endMins - startMins) / (24 * 60)) * 100;
 
                                             return (
                                                 <div 
                                                     className="shift-block employee-daily-shift"
                                                     style={{
-                                                        gridColumnStart: startHour + 1,
-                                                        gridColumnEnd: (endHour === 0 ? 24 : endHour) + 1,
-                                                        zIndex: 10,
-                                                        opacity: 0.8
+                                                        position: 'absolute',
+                                                        left: `${leftPercent}%`,
+                                                        width: `${widthPercent}%`,
+                                                        top: 0,
+                                                        height: '100%',
+                                                        zIndex: 1,
+                                                        opacity: 0.6,
+                                                        pointerEvents: 'none'
                                                     }}
                                                 >
-                                                    <div className="shift-block-content" style={{ color: '#854d0e' }}>
-                                                        <div className="shift-time-range"><i className="bi bi-clock"></i> {timeString} - {endString}</div>
-                                                        <div className="shift-location-info"><i className="bi bi-geo-alt"></i> {employee.service_type || 'Staff'}</div>
+                                                    <div className="shift-block-content" style={{ color: '#854d0e', fontSize: '0.75rem' }}>
+                                                        <div className="shift-time-range">
+                                                            <i className="bi bi-clock"></i> {formatTimeDisplay(dailyShift.shift_start_time)} - {formatTimeDisplay(dailyShift.shift_end_time)}
+                                                        </div>
+                                                        <div className="shift-location-info">
+                                                            <i className="bi bi-geo-alt"></i> {employee.service_type || 'Staff'}
+                                                        </div>
                                                     </div>
                                                 </div>
                                             );
                                         })()}
+
+                                        {/* Client shifts with overlap handling */}
+                                        {clientShifts.map((shift) => {
+                                            const client = getClient(shift.client_id);
+                                            const startMins = parseTimeToMinutes(shift.shift_start_time);
+                                            const endMins = parseTimeToMinutes(shift.shift_end_time);
+                                            const leftPercent = (startMins / (24 * 60)) * 100;
+                                            const widthPercent = ((endMins - startMins) / (24 * 60)) * 100;
+                                            
+                                            const overlap = overlaps[shift.shift_id] || { column: 0, totalColumns: 1 };
+                                            const columnWidth = 100 / overlap.totalColumns;
+                                            const columnLeft = overlap.column * columnWidth;
+
+                                            // Handle active dragging/resizing
+                                            const isDragging = draggingShift?.shift.shift_id === shift.shift_id;
+                                            const isResizing = resizing?.shift.shift_id === shift.shift_id;
+                                            
+                                            let displayLeft = leftPercent;
+                                            let displayWidth = widthPercent;
+                                            
+                                            if (isResizing) {
+                                                displayLeft = (resizing.startMinutes / (24 * 60)) * 100;
+                                                displayWidth = ((resizing.endMinutes - resizing.startMinutes) / (24 * 60)) * 100;
+                                            } else if (isDragging) {
+                                                displayLeft = (draggingShift.startMinutes / (24 * 60)) * 100;
+                                                displayWidth = ((draggingShift.endMinutes - draggingShift.startMinutes) / (24 * 60)) * 100;
+                                            }
+
+                                            return (
+                                                <div 
+                                                    key={`client-${shift.shift_id}`} 
+                                                    className={`shift-block client-shift ${shift.is_leave ? 'leave-alert-border' : ''} ${isDragging || isResizing ? 'dragging' : ''}`}
+                                                    onMouseDown={(e) => handleShiftDragStart(e, shift)}
+                                                    onClick={(e) => handleShiftClick(e, shift)}
+                                                    style={{ 
+                                                        position: 'absolute',
+                                                        left: `calc(${displayLeft}% + ${columnLeft}%)`,
+                                                        width: `calc(${displayWidth}% * ${1 / overlap.totalColumns})`,
+                                                        top: '2px',
+                                                        height: 'calc(100% - 4px)',
+                                                        zIndex: isDragging || isResizing ? 100 : 20,
+                                                        cursor: 'move',
+                                                        opacity: isDragging ? 0.7 : 1
+                                                    }}
+                                                >
+                                                    {/* Resize handles */}
+                                                    <div 
+                                                        className="resize-handle resize-left"
+                                                        onMouseDown={(e) => handleResizeStart(e, shift, 'start')}
+                                                        style={{
+                                                            position: 'absolute',
+                                                            left: 0,
+                                                            top: 0,
+                                                            bottom: 0,
+                                                            width: '6px',
+                                                            cursor: 'ew-resize',
+                                                            zIndex: 150
+                                                        }}
+                                                    />
+                                                    <div 
+                                                        className="resize-handle resize-right"
+                                                        onMouseDown={(e) => handleResizeStart(e, shift, 'end')}
+                                                        style={{
+                                                            position: 'absolute',
+                                                            right: 0,
+                                                            top: 0,
+                                                            bottom: 0,
+                                                            width: '6px',
+                                                            cursor: 'ew-resize',
+                                                            zIndex: 150
+                                                        }}
+                                                    />
+                                                    
+                                                    <div className="shift-block-content">
+                                                        <div className="shift-time-range">
+                                                            {formatTimeDisplay(shift.shift_start_time)} - {formatTimeDisplay(shift.shift_end_time)}
+                                                        </div>
+                                                        <div className="shift-client-info">
+                                                            <i className="bi bi-person"></i> {client?.first_name || 'Client'} {shift.is_leave ? '⚠️' : ''}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+
+                                        {/* Drag-to-create preview */}
+                                        {dragCreate?.empId === employee.emp_id && dragCreate.isCreating && (
+                                            <div 
+                                                className="shift-block client-shift"
+                                                style={{
+                                                    position: 'absolute',
+                                                    left: `${(dragCreate.startMinutes / (24 * 60)) * 100}%`,
+                                                    width: `${((dragCreate.endMinutes - dragCreate.startMinutes) / (24 * 60)) * 100}%`,
+                                                    top: '2px',
+                                                    height: 'calc(100% - 4px)',
+                                                    zIndex: 50,
+                                                    opacity: 0.5,
+                                                    border: '2px dashed #3b82f6',
+                                                    pointerEvents: 'none'
+                                                }}
+                                            >
+                                                <div className="shift-block-content">
+                                                    <div className="shift-time-range">
+                                                        {formatTimeDisplay(minutesToTimeString(dragCreate.startMinutes, currentDate.toISOString().split('T')[0]))} - {formatTimeDisplay(minutesToTimeString(dragCreate.endMinutes, currentDate.toISOString().split('T')[0]))}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             );
