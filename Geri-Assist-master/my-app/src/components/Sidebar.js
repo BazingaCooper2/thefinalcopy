@@ -47,7 +47,7 @@ export default function Sidebar() {
             dropdown: [
                 { label: 'Daily Schedule', path: '/dailySchedule' },
                 { label: 'Weekly Timeline', path: '/schedule' },
-                { label: 'Monthly Schedule', path: '/monthlySchedule' },
+                //{ label: 'Monthly Schedule', path: '/monthlySchedule' },
                 { label: 'Master Schedule', path: '/masterSchedule' },
             ],
         },
