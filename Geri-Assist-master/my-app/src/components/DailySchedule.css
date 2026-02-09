@@ -153,6 +153,7 @@
 .time-slots-header {
     display: flex;
     flex: 1;
+    grid-template-columns: repeat(24, 80px);
 }
 
 .time-slot-header {
@@ -212,6 +213,11 @@
     display: grid;
     grid-template-columns: repeat(24, 80px);
     flex: 1;
+    position: relative;
+    padding: 0;
+    margin: 0;
+    overflow: hidden;
+    grid-template-rows: 1fr;
 }
 
 .time-slot-cell {
@@ -225,15 +231,20 @@
 }
 
 .time-slot-cell-placeholder {
+    grid-row: 1;
     min-width: 80px;
     width: 80px;
     border-right: 1px solid #e5e7eb;
-    background: white;
+    background: transparent;
     position: relative;
+    z-index: 1;
 }
 
 /* Shift Blocks - Time-based Layout */
 .shift-block {
+    grid-row: 1;
+    margin: 2px;
+    position: relative;
     background: #fef3c7;
     border: 2px solid #fbbf24;
     border-left: 4px solid #f59e0b;
@@ -242,7 +253,6 @@
     cursor: pointer;
     transition: all 0.2s;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-    position: relative;
     min-height: 60px;
     z-index: 10;
     display: flex;
@@ -254,6 +264,10 @@
     background: #fed7aa;
     border: 2px solid #fb923c;
     border-left: 4px solid #ea580c;
+    pointer-events: auto; /* CHANGE THIS from none to auto */
+    z-index: 25;          /* Increase this to be above the grid (z-index 20) */
+    cursor: pointer;
+    opacity: 0.9;
 }
 
 .employee-daily-shift:hover {
@@ -441,4 +455,130 @@
     .employee-time-slots {
         grid-template-columns: repeat(24, 60px);
     }
+}
+
+.timeline-container {
+    overflow-x: auto;
+    height: calc(100vh - 120px);
+    position: relative;
+}
+
+.timeline-grid {
+    min-width: max-content;
+    background: white;
+}
+
+/* Timeline Header - Sticky on Top */
+.timeline-header {
+    display: flex;
+    background: #f9fafb;
+    border-bottom: 2px solid #e5e7eb;
+    position: sticky;
+    top: 0;
+    z-index: 1000; /* Higher than any row */
+}
+
+/* ... Existing Styles ... */
+
+/* STICKY COLUMN UPDATES */
+.employee-column-header {
+    width: 200px;
+    min-width: 200px;
+    padding: 1rem;
+    background: #f9fafb;
+    position: sticky;
+    left: 0;
+    z-index: 1001; /* Highest corner */
+    border-right: 1px solid #e5e7eb;
+}
+
+.employee-name-cell {
+    width: 200px;
+    min-width: 200px;
+    padding: 1rem;
+    background: white;
+    position: sticky;
+    left: 0;
+    z-index: 950;
+    border-right: 1px solid #e5e7eb;
+}
+
+/* NEW HOURS COLUMN */
+.hours-column-header, .hours-cell {
+    width: 60px;
+    min-width: 60px;
+    padding: 1rem 0.5rem;
+    text-align: center;
+    background: #f9fafb;
+    position: sticky;
+    left: 200px; /* Right after employee column */
+    z-index: 950;
+    border-right: 1px solid #e5e7eb;
+}
+
+.hours-cell {
+    background: white;
+    font-weight: 700;
+    color: #4b5563;
+    font-size: 0.85rem;
+}
+
+.hours-cell-empty {
+    width: 60px;
+    min-width: 60px;
+    background: #f0fdf4;
+    position: sticky;
+    left: 200px;
+    z-index: 950;
+    border-right: 1px solid #e5e7eb;
+}
+
+/* INTERACTION STYLES */
+.time-slot-cell-placeholder:hover {
+    background-color: rgba(59, 130, 246, 0.08);
+    cursor: cell; /* Crosshair/plus cursor for 'Add' action */
+}
+
+.shift-block {
+    cursor: grab;
+    user-select: none;
+    transition: transform 0.1s ease;
+}
+
+.shift-block.dragging {
+    opacity: 0.4;
+    cursor: grabbing;
+}
+
+.shift-block:hover {
+    filter: brightness(0.95);
+    z-index: 100;
+}
+
+/* Modals */
+.outermodal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 2000;
+}
+
+.inmodal {
+    background-color: white;
+    border-radius: 12px;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2);
+    width: 90%;
+    max-width: 550px;
+    animation: modalPopIn 0.2s ease-out;
+}
+
+@keyframes modalPopIn {
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
 }

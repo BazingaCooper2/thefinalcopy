@@ -1,0 +1,95 @@
+.
+├── Geri-Assist-master
+│   ├── README.md
+│   ├── my-app
+│   │   ├── README.md
+│   │   ├── package-lock.json
+│   │   ├── package.json
+│   │   ├── public
+│   │   │   ├── favicon.ico
+│   │   │   ├── index.html
+│   │   │   ├── logo192.png
+│   │   │   ├── logo512.png
+│   │   │   ├── manifest.json
+│   │   │   └── robots.txt
+│   │   └── src
+│   │       ├── App.css
+│   │       ├── App.js
+│   │       ├── App.test.js
+│   │       ├── components
+│   │       │   ├── AdminSchedule.js
+│   │       │   ├── AdminShiftModal.js
+│   │       │   ├── CalendarSchedule.css
+│   │       │   ├── CalendarSchedule.js
+│   │       │   ├── ClientDetailsPage.js
+│   │       │   ├── ClockIn.js
+│   │       │   ├── DailySchedule.css
+│   │       │   ├── DailySchedule.js
+│   │       │   ├── Dashboard.js
+│   │       │   ├── DashboardCard.js
+│   │       │   ├── DashboardGraphs.js
+│   │       │   ├── EmployeeAttachments.js
+│   │       │   ├── EmployeeAvailability.js
+│   │       │   ├── EmployeeCustomPayRates.js
+│   │       │   ├── EmployeeDetailsEach.js
+│   │       │   ├── EmployeeDetailsPage.js
+│   │       │   ├── EmployeeNotification.js
+│   │       │   ├── EmployeeRow.js
+│   │       │   ├── EmployeeSettings.js
+│   │       │   ├── EmployeeSettingsModal.js
+│   │       │   ├── EmployeeUnavailability.js
+│   │       │   ├── Footer.css
+│   │       │   ├── Footer.js
+│   │       │   ├── InjuryReport.js
+│   │       │   ├── Login.js
+│   │       │   ├── Logout.js
+│   │       │   ├── MapSection.js
+│   │       │   ├── MasterSchedule.js
+│   │       │   ├── Navbar.js
+│   │       │   ├── PrepareMonthlySchedule.js
+│   │       │   ├── Register.js
+│   │       │   ├── Register2.js
+│   │       │   ├── ScheduleGrid.js
+│   │       │   ├── ScheduleOld.js
+│   │       │   ├── SchedulePage copy 2.js
+│   │       │   ├── SchedulePage copy.js
+│   │       │   ├── SchedulePage.css
+│   │       │   ├── SchedulePage.js
+│   │       │   ├── ServiceSidebar.js
+│   │       │   ├── ShiftCell.js
+│   │       │   ├── ShiftEditModal.js
+│   │       │   ├── ShiftOffers.js
+│   │       │   ├── Sidebar.js
+│   │       │   ├── Tasks.js
+│   │       │   ├── adminApi.js
+│   │       │   ├── adminDashboard.js
+│   │       │   ├── editModal.js
+│   │       │   ├── fillInjuryReport.js
+│   │       │   ├── manualShiftAddition.js
+│   │       │   └── styledashboard.css
+│   │       ├── config
+│   │       │   └── api.js
+│   │       ├── index.css
+│   │       ├── index.js
+│   │       ├── logo.svg
+│   │       ├── modern-theme.css
+│   │       ├── reportWebVitals.js
+│   │       ├── services
+│   │       │   └── api.js
+│   │       ├── setupTests.js
+│   │       └── utils
+│   │           ├── client.js
+│   │           └── emp.js
+│   ├── schedule.py
+│   └── schedule.py.backup
+├── README.md
+├── debug_db.py
+├── debug_db_2.py
+├── debug_incidents.py
+├── gerriapp-firebase-adminsdk-fbsvc-fe186b01ec.json
+├── project_tree.txt
+├── render.yaml
+├── requirements.txt
+└── schedule.py
+
+8 directories, 84 files

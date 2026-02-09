@@ -103,58 +103,71 @@ def dashboard_stats():
         { "label": "Unavailable - Sick", "value": sick_leave, "color": "card-orange" }
     ])
 
-# schedule display
 @app.route('/scheduled', methods=['GET'])
 def schedule():
-    clients = supabase.table("client").select("client_id, name").execute()
+    clients = supabase.table("client").select("*").execute()
     employees = supabase.table("employee").select("*").execute()
     shifts = supabase.table("shift").select("*").execute()
     daily_shifts = supabase.table("daily_shift").select("*").execute()
-
-    client_map = {c["client_id"]: c for c in clients.data}
-
+    leaves = supabase.table("leaves").select("*").execute().data
+    enriched_shifts = []
     for s in shifts.data:
-        s["client"] = client_map.get(s.get("client_id"))
+        emp_leave = next((l for l in leaves if l['emp_id'] == s.get('emp_id') 
+                          and l['leave_start_date'] <= s.get('date', '') <= l['leave_end_date']), None)
+        
+        s['is_leave'] = emp_leave is not None
+        s['leave_reason'] = emp_leave['leave_reason'] if emp_leave else ""
+        enriched_shifts.append(s)
 
-    return jsonify({
-        "client": clients.data,      # unchanged
+    datatosend = {
+        "client": clients.data,
         "employee": employees.data,
-        "shift": shifts.data,         # NOW FIXED
+        "shift": enriched_shifts, # Use the enriched list
         "daily_shift": daily_shifts.data
-    })
-
+    }
+    return jsonify(datatosend)
 
 @app.route('/submit', methods=['POST'])
 def edit_schedule():
     data = request.json
-    s_id = data['shift_id']
+    s_id = data.get('shift_id')
+    
+    # CHANGE: Make datetime parsing flexible to handle "T" or space separators
+    def flexible_parse(t_str):
+        return t_str.replace('T', ' ').split('.')[0] # Standardizes to YYYY-MM-DD HH:MM:SS
 
-    # 1. Fetch client
-    client = supabase.table("client").select("*").eq("client_id", data['client_id']).execute()
+    full_start = flexible_parse(data['shift_start_time'])
+    full_end = flexible_parse(data['shift_end_time'])
 
-    s_time = datetime.strptime(data['shift_start_time'], "%Y-%m-%dT%H:%M:%SZ")
-    e_time = datetime.strptime(data['shift_end_time'], "%Y-%m-%dT%H:%M:%SZ")
-    print(e_time)
-    # 2. Update shift times
+    # CHANGE: Update the shift table with ALL fields from the modal
     supabase.table("shift").update({
-    "shift_start_time": parse_datetime(data["shift_start_time"]).isoformat().replace("+00:00", "Z"),
-    "shift_end_time": parse_datetime(data["shift_end_time"]).isoformat().replace("+00:00", "Z")
-}).eq("shift_id", s_id).execute()
+        "shift_start_time": full_start,
+        "shift_end_time": full_end,
+        "emp_id": data.get('emp_id'),       # ADD THIS
+        "date": data.get('shift_date'),     # ADD THIS
+        "shift_status": "Scheduled"
+    }).eq("shift_id", s_id).execute()
 
-
-    # 3. Call Postgres function for daily_shift updates
+    # Keep your existing logic for daily_shifts and notifications
     supabase.rpc("update_daily_shifts", {}).execute()
+    
+    return jsonify({"status": "success", "message": "Shift updated"})
 
-    # 4. Fetch updated shift
-    updated_shift = supabase.table("shift").select("*").eq("client_id", data['client_id']).eq("shift_id", data['shift_id']).execute()
-
-    print("Updated shift:", updated_shift.data)
-    emp_id = updated_shift.data[0]['emp_id']
-    print(f"Rescheduled Shift Assigned to employee {emp_id}:", f"Shift Re-scheduled for client id: {data['client_id']} - from {updated_shift.data[0]['shift_start_time']} to {updated_shift.data[0]['shift_end_time']}. Time of reschedule: {datetime.utcnow()}. Do you accept or reject the offer.")
-    return jsonify({
-        "client": client.data,
-        "updated_shift": updated_shift.data
-    })
+@app.route('/delete_shift', methods=['POST'])
+def delete_shift():
+    data = request.json
+    s_id = data.get('shift_id')
+    
+    if not s_id:
+        return jsonify({"error": "No shift_id provided"}), 400
+    
+    # Delete from Supabase
+    supabase.table("shift").delete().eq("shift_id", s_id).execute()
+    
+    # Sync the changes to the daily view
+    supabase.rpc("update_daily_shifts", {}).execute()
+    
+    return jsonify({"message": "Shift deleted successfully"}), 200
 
 @app.route('/newShiftSchedule', methods=['GET'])
 def newShiftSchedule():
@@ -2367,20 +2380,32 @@ def send_email(subject, body):
 
 @app.route("/add_client_shift", methods=["POST"])
 def add_client_shift():
-    data = request.get_json()
+    data = request.json
     try:
-        supabase.table("shift").insert({
-            "client_id": data["client_id"],
-            "emp_id":data["emp_id"],
-            "shift_start_time": parse_datetime(data["shift_start_time"]).isoformat().replace("+00:00", "Z"),
-            "shift_end_time": parse_datetime(data["shift_end_time"]).isoformat().replace("+00:00", "Z"),
-            "date":data["shift_date"],
-            "shift_status": data['shift_status'],
-        }).execute()
+        # We explicitly map ONLY the columns that exist in the 'shift' table
+        # to avoid the "Could not find column 'shift_type'" error.
+        insert_payload = {
+            "client_id": int(data['client_id']),
+            "emp_id": int(data['emp_id']) if data.get('emp_id') else None,
+            "shift_start_time": data['shift_start_time'].replace('T', ' '),
+            "shift_end_time": data['shift_end_time'].replace('T', ' '),
+            "date": data.get("shift_date"),
+            "shift_status": data.get("shift_status", "Scheduled")
+        }
 
-        return jsonify({"message": "Client shift added"}), 200
+        result = supabase.table("shift").insert(insert_payload).execute()
+        
+        # Check if the insert was successful
+        if not result.data:
+             return jsonify({"error": "Database rejection. Check your data constraints."}), 500
+
+        # Sync to the daily view via RPC
+        supabase.rpc("update_daily_shifts", {}).execute()
+
+        return jsonify({"message": "Client shift added successfully"}), 200
 
     except Exception as e:
+        print(f"ERROR in /add_client_shift: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route("/add_employee_shift", methods=["POST"])
@@ -3706,4 +3731,3 @@ def admin_dashboard_view():
 # --- Run ---
 if __name__ == '__main__':
     app.run(debug=True)
-
