@@ -72,6 +72,28 @@ export default function DailySchedule() {
         return timePart.slice(0, 5); // HH:MM
     };
 
+    const checkCapacity = (empId, dateStr, shiftId, newStartMins, newEndMins, allShifts) => {
+    const MAX_MINUTES = 15 * 60; // 900 minutes
+    const newDuration = newEndMins - newStartMins;
+
+    const otherShiftsMinutes = allShifts
+        .filter(s => 
+            Number(s.emp_id) === Number(empId) && 
+            (s.date === dateStr || s.shift_start_time?.startsWith(dateStr)) &&
+            // CRITICAL: Exclude the shift we are currently editing/resizing
+            String(s.shift_id) !== String(shiftId) 
+        )
+        .reduce((sum, s) => {
+            const start = parseTimeToMinutes(s.shift_start_time);
+            const end = parseTimeToMinutes(s.shift_end_time);
+            return sum + (end - start);
+        }, 0);
+
+    // This now allows reducing: (Other shifts) + (Your new smaller duration) 
+    // will be less than the previous total.
+    return (otherShiftsMinutes + newDuration) <= MAX_MINUTES;
+};
+
     const getPositionFromEvent = (e, empId) => {
         const row = e.currentTarget.closest('.employee-time-slots');
         if (!row) return null;
@@ -179,23 +201,41 @@ export default function DailySchedule() {
     };
 
     const saveResize = async () => {
-        if (!resizing) return;
-        
-        const dateStr = currentDate.toISOString().split('T')[0];
-        try {
-            await axios.post(`${API_URL}/submit`, {
-                shift_id: resizing.shift.shift_id,
-                emp_id: resizing.shift.emp_id,
-                shift_start_time: minutesToTimeString(resizing.startMinutes, dateStr),
-                shift_end_time: minutesToTimeString(resizing.endMinutes, dateStr),
-                shift_date: dateStr,
-                shift_status: resizing.shift.shift_status || "Scheduled"
-            });
-            fetchScheduleData();
-        } catch (err) {
-            console.error("Resize failed:", err);
-        }
-    };
+    if (!resizing) return;
+    
+    const dateStr = currentDate.toISOString().split('T')[0];
+
+    // Check if the new size exceeds 15 hours
+    const isValid = checkCapacity(
+        resizing.shift.emp_id, 
+        dateStr, 
+        resizing.shift.shift_id, 
+        resizing.startMinutes, 
+        resizing.endMinutes, 
+        scheduleData.shift
+    );
+
+    if (!isValid) {
+        alert("Maximum shifts allocated: This employee cannot exceed 15 hours per day.");
+        setResizing(null);
+        fetchScheduleData(); // Refresh to snap the shift back to its previous valid size
+        return;
+    }
+
+    try {
+        await axios.post(`${API_URL}/submit`, {
+            shift_id: resizing.shift.shift_id,
+            emp_id: resizing.shift.emp_id,
+            shift_start_time: minutesToTimeString(resizing.startMinutes, dateStr),
+            shift_end_time: minutesToTimeString(resizing.endMinutes, dateStr),
+            shift_date: dateStr,
+            shift_status: resizing.shift.shift_status || "Scheduled"
+        });
+        fetchScheduleData();
+    } catch (err) {
+        console.error("Resize failed:", err);
+    }
+};
 
     useEffect(() => {
         if (resizing === null) return;
@@ -241,23 +281,41 @@ export default function DailySchedule() {
     };
 
     const saveDrag = async () => {
-        if (!draggingShift?.empId) return;
-        
-        const dateStr = currentDate.toISOString().split('T')[0];
-        try {
-            await axios.post(`${API_URL}/submit`, {
-                shift_id: draggingShift.shift.shift_id,
-                emp_id: draggingShift.empId,
-                shift_start_time: minutesToTimeString(draggingShift.startMinutes, dateStr),
-                shift_end_time: minutesToTimeString(draggingShift.endMinutes, dateStr),
-                shift_date: dateStr,
-                shift_status: draggingShift.shift.shift_status || "Scheduled"
-            });
-            fetchScheduleData();
-        } catch (err) {
-            console.error("Drag failed:", err);
-        }
-    };
+    if (!draggingShift?.empId) return;
+    
+    const dateStr = currentDate.toISOString().split('T')[0];
+
+    // Check if moving this shift puts the target employee over 15 hours
+    const isValid = checkCapacity(
+        draggingShift.empId, 
+        dateStr, 
+        draggingShift.shift.shift_id, 
+        draggingShift.startMinutes, 
+        draggingShift.endMinutes, 
+        scheduleData.shift
+    );
+
+    if (!isValid) {
+        alert("Maximum shifts allocated: This employee cannot exceed 15 hours per day.");
+        setDraggingShift(null);
+        fetchScheduleData(); // Refresh to snap the shift back to its original position
+        return;
+    }
+
+    try {
+        await axios.post(`${API_URL}/submit`, {
+            shift_id: draggingShift.shift.shift_id,
+            emp_id: draggingShift.empId,
+            shift_start_time: minutesToTimeString(draggingShift.startMinutes, dateStr),
+            shift_end_time: minutesToTimeString(draggingShift.endMinutes, dateStr),
+            shift_date: dateStr,
+            shift_status: draggingShift.shift.shift_status || "Scheduled"
+        });
+        fetchScheduleData();
+    } catch (err) {
+        console.error("Drag failed:", err);
+    }
+};
 
     useEffect(() => {
         if (draggingShift === null) return;
