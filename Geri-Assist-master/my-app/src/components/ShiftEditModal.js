@@ -1,14 +1,6 @@
 import React, { useState, useEffect } from "react";
 import Modal from "./editModal";
 
-/**
- * ShiftEditModal Component
- * Features:
- * 1. Numeric ID Extraction: Prevents 500 errors by converting values to bigint-compatible numbers.
- * 2. Duplicate Prevention: Validates overlaps against all existing shifts.
- * 3. Schema Compliance: Handles "GENERATED ALWAYS AS IDENTITY" by excluding shift_id on new inserts.
- * 4. Client Selection: Mandatory dropdown for database foreign key requirements.
- */
 export default function ShiftEditModal({ 
     isOpen, 
     onClose, 
@@ -28,13 +20,12 @@ export default function ShiftEditModal({
         shift_type: "regular",
     });
 
-    // Helper to extract YYYY-MM-DD from various date string formats
+    // ========== HELPERS ==========
     const getDateString = (dt) => {
         if (!dt) return "";
         return dt.split(/[T ]/)[0];
     };
 
-    // Helper to extract HH:mm from various date/time string formats
     const getTimeString = (dt) => {
         if (!dt) return "";
         const parts = dt.split(/[T ]/);
@@ -42,90 +33,129 @@ export default function ShiftEditModal({
         return time.substring(0, 5);
     };
 
-    useEffect(() => {
-    if (shift && isOpen) {
-        if (shift.isNew) {
-            // DEFAULTS FOR NEW SHIFT
-            setFormData({
-                emp_id: shift.emp_id || "",
-                client_id: "", // Force user to select a client
-                shift_date: getDateString(shift.shift_date),
-                start_time: getTimeString(shift.shift_start_time) || "08:00",
-                end_time: getTimeString(shift.shift_end_time) || "09:00",
-            });
-        } else {
-            // VALUES FOR EXISTING SHIFT
-            setFormData({
-                emp_id: shift.emp_id || "",
-                client_id: shift.client_id || "",
-                shift_date: getDateString(shift.shift_date || shift.date || shift.shift_start_time),
-                start_time: getTimeString(shift.shift_start_time),
-                end_time: getTimeString(shift.shift_end_time),
-            });
-        }
-    }
-}, [shift, isOpen]);
+    const parseTimeToMinutes = (timeStr) => {
+        if (!timeStr) return 0;
+        const [hours, minutes] = timeStr.split(':').map(Number);
+        return hours * 60 + minutes;
+    };
 
-    // ========== OVERLAP VALIDATION LOGIC ==========
-    const getOverlapError = () => {
+    const selectedClient = clients?.find(c => Number(c.client_id) === Number(formData.client_id));
+    const isOutreachClient = selectedClient?.service_type?.toLowerCase() === "outreach";
+
+    useEffect(() => {
+        if (shift && isOpen) {
+            if (shift.isNew) {
+                setFormData({
+                    emp_id: shift.emp_id || "",
+                    client_id: "",
+                    shift_date: getDateString(shift.shift_date),
+                    start_time: getTimeString(shift.shift_start_time) || "08:00",
+                    end_time: getTimeString(shift.shift_end_time) || "09:00",
+                    shift_type: "regular"
+                });
+            } else {
+                setFormData({
+                    emp_id: shift.emp_id || "",
+                    client_id: shift.client_id || "",
+                    shift_date: getDateString(shift.shift_date || shift.date || shift.shift_start_time),
+                    start_time: getTimeString(shift.shift_start_time),
+                    end_time: getTimeString(shift.shift_end_time),
+                    shift_type: shift.shift_type || "regular"
+                });
+            }
+        }
+    }, [shift, isOpen]);
+
+    // ========== VALIDATION LOGIC ==========
+    const getValidationError = () => {
         if (!formData.emp_id || !formData.shift_date || !formData.start_time || !formData.end_time) return null;
 
+        const currentStartMins = parseTimeToMinutes(formData.start_time);
+        const currentEndMins = parseTimeToMinutes(formData.end_time);
+        const currentDuration = currentEndMins - currentStartMins;
+
+        const MAX_MINUTES = 15 * 60;
+        const existingDailyMinutes = allShifts?.reduce((acc, s) => {
+            const sameEmp = Number(s.emp_id) === Number(formData.emp_id);
+            const sameDate = getDateString(s.date || s.shift_start_time) === formData.shift_date;
+            const isNotSelf = !shift.isNew ? s.shift_id !== shift.shift_id : true;
+
+            if (sameEmp && sameDate && isNotSelf) {
+                const sStart = parseTimeToMinutes(getTimeString(s.shift_start_time));
+                const sEnd = parseTimeToMinutes(getTimeString(s.shift_end_time));
+                return acc + (sEnd - sStart);
+            }
+            return acc;
+        }, 0) || 0;
+
+        if ((existingDailyMinutes + currentDuration) > MAX_MINUTES) {
+            return "Maximum shifts allocated: This employee cannot exceed 15 hours per day.";
+        }
+
         const isOverlapping = allShifts?.some(existingShift => {
-            // 1. Skip if it's the same shift we are currently editing
             if (!shift.isNew && existingShift.shift_id === shift.shift_id) return false;
 
-            // 2. Only check shifts for the same employee on the same date
             const sameEmployee = Number(existingShift.emp_id) === Number(formData.emp_id);
             const sameDate = getDateString(existingShift.date || existingShift.shift_start_time) === formData.shift_date;
 
             if (sameEmployee && sameDate) {
-                const newStart = formData.start_time;
-                const newEnd = formData.end_time;
-                const existStart = getTimeString(existingShift.shift_start_time);
-                const existEnd = getTimeString(existingShift.shift_end_time);
-
-                // Overlap condition: (StartA < EndB) and (EndA > StartB)
-                return newStart < existEnd && newEnd > existStart;
+                const existStart = parseTimeToMinutes(getTimeString(existingShift.shift_start_time));
+                const existEnd = parseTimeToMinutes(getTimeString(existingShift.shift_end_time));
+                return currentStartMins < existEnd && currentEndMins > existStart;
             }
             return false;
         });
 
-        return isOverlapping ? "This employee is already scheduled for another shift during this time." : null;
+        if (isOverlapping) return "This employee is already scheduled for another shift during this time.";
+
+        return null;
     };
 
-    const overlapError = getOverlapError();
+    const validationError = getValidationError();
 
     const handleChange = (e) => {
         const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, [name]: value }));
+        
+        setFormData(prev => {
+            const newData = { ...prev, [name]: value };
+
+            // Reset shift_type to 'regular' if client changes to non-outreach while 'travel' was selected
+            if (name === "client_id") {
+                const nextClient = clients?.find(c => Number(c.client_id) === Number(value));
+                if (nextClient?.service_type?.toLowerCase() !== "outreach" && prev.shift_type === "travel") {
+                    newData.shift_type = "regular";
+                }
+            }
+            return newData;
+        });
     };
 
     const handleSave = () => {
-    const selectedClientId = Number(formData.client_id);
-    const selectedEmpId = Number(formData.emp_id);
+        const selectedClientId = Number(formData.client_id);
+        const selectedEmpId = Number(formData.emp_id);
 
-    if (!selectedClientId) return alert("Please select a Client.");
-    if (!selectedEmpId) return alert("Please select an Employee.");
+        if (!selectedClientId) return alert("Please select a Client.");
+        if (!selectedEmpId) return alert("Please select an Employee.");
 
-    // Define ONLY the keys your database schema expects
-    const payload = {
-        shift_id: shift.shift_id,
-        client_id: selectedClientId,
-        emp_id: selectedEmpId,
-        shift_start_time: `${formData.shift_date}T${formData.start_time}:00`,
-        shift_end_time: `${formData.shift_date}T${formData.end_time}:00`,
-        shift_type: formData.shift_type,
-        shift_date: formData.shift_date,
-        shift_status: "Scheduled",
-        isNew: shift.isNew 
+        const payload = {
+            shift_id: shift.shift_id,
+            client_id: selectedClientId,
+            emp_id: selectedEmpId,
+            shift_start_time: `${formData.shift_date}T${formData.start_time}:00`,
+            shift_end_time: `${formData.shift_date}T${formData.end_time}:00`,
+            shift_type: formData.shift_type,
+            shift_date: formData.shift_date,
+            shift_status: "Scheduled",
+            isNew: shift.isNew 
+        };
+
+        if (shift.isNew) {
+            delete payload.shift_id;
+        }
+
+        onSave(payload);
     };
 
-    if (shift.isNew) {
-        delete payload.shift_id; // Identity column requirement
-    }
-
-    onSave(payload);
-};
     if (!isOpen) return null;
 
     return (
@@ -135,21 +165,18 @@ export default function ShiftEditModal({
                     {shift?.isNew ? "Add New Shift" : "Edit Shift"}
                 </h3>
 
-                {/* Overlap Warning Alert */}
-                {overlapError && (
+                {validationError && (
                     <div style={{ background: "#fee2e2", color: "#b91c1c", padding: "10px", borderRadius: "6px", marginBottom: "1rem", fontSize: "0.85rem", border: "1px solid #fecaca" }}>
-                        <strong>Validation Error:</strong> {overlapError}
+                        <strong>Validation Error:</strong> {validationError}
                     </div>
                 )}
 
-                {/* Leave Warning Alert */}
                 {shift?.is_leave && (
                     <div style={{ background: "#fffbeb", color: "#92400e", padding: "10px", borderRadius: "6px", marginBottom: "1rem", fontSize: "0.85rem", border: "1px solid #fef3c7" }}>
                         <strong>Note:</strong> This employee is on leave: {shift.leave_reason}
                     </div>
                 )}
 
-                {/* Client Selection - Mandatory for foreign key bigint constraints */}
                 <div style={{ marginBottom: "1rem" }}>
                     <label style={{ display: "block", fontSize: "0.875rem", fontWeight: "bold", marginBottom: "0.25rem" }}>Client</label>
                     <select
@@ -161,13 +188,12 @@ export default function ShiftEditModal({
                         <option value="">-- Select Client --</option>
                         {clients?.map((client) => (
                             <option key={client.client_id} value={client.client_id}>
-                                {client.first_name} {client.last_name}
+                                {client.first_name} {client.last_name} ({client.service_type})
                             </option>
                         ))}
                     </select>
                 </div>
 
-                {/* Employee Selection */}
                 <div style={{ marginBottom: "1rem" }}>
                     <label style={{ display: "block", fontSize: "0.875rem", fontWeight: "bold", marginBottom: "0.25rem" }}>Employee</label>
                     <select
@@ -228,6 +254,10 @@ export default function ShiftEditModal({
                         style={{ width: "100%", padding: "8px", border: "1px solid #ccc", borderRadius: "4px" }}
                     >
                         <option value="regular">Regular</option>
+                        {/* Outreach Guard: Only show Travel if Client is Outreach */}
+                        {isOutreachClient && (
+                                <option value="travel">Travel Block</option>
+                            )}
                         <option value="vacation">Vacation</option>
                         <option value="sick">Sick</option>
                         <option value="float">Float</option>
@@ -259,14 +289,14 @@ export default function ShiftEditModal({
                     <button
                         type="button"
                         onClick={handleSave}
-                        disabled={!!overlapError}
+                        disabled={!!validationError}
                         style={{ 
                             padding: "8px 20px", 
-                            background: overlapError ? "#a78bfa" : "#7c3aed", 
+                            background: validationError ? "#a78bfa" : "#7c3aed", 
                             color: "#fff", 
                             border: "none", 
                             borderRadius: "4px", 
-                            cursor: overlapError ? "not-allowed" : "pointer", 
+                            cursor: validationError ? "not-allowed" : "pointer", 
                             fontWeight: "bold" 
                         }}
                     >
