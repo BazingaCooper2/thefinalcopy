@@ -1,14 +1,6 @@
 import React, { useState, useEffect } from "react";
 import Modal from "./editModal";
 
-/**
- * ShiftEditModal Component
- * Features:
- * 1. Numeric ID Extraction: Prevents 500 errors.
- * 2. Duplicate Prevention: Validates overlaps.
- * 3. Capacity Counter: Limits employee to 15 hours per day.
- * 4. Schema Compliance: Handles identity columns.
- */
 export default function ShiftEditModal({ 
     isOpen, 
     onClose, 
@@ -47,7 +39,9 @@ export default function ShiftEditModal({
         return hours * 60 + minutes;
     };
 
-    // ========== INITIALIZATION ==========
+    const selectedClient = clients?.find(c => Number(c.client_id) === Number(formData.client_id));
+    const isOutreachClient = selectedClient?.service_type?.toLowerCase() === "outreach";
+
     useEffect(() => {
         if (shift && isOpen) {
             if (shift.isNew) {
@@ -80,10 +74,8 @@ export default function ShiftEditModal({
         const currentEndMins = parseTimeToMinutes(formData.end_time);
         const currentDuration = currentEndMins - currentStartMins;
 
-        // 1. Capacity Check (15 Hours / 900 Minutes)
         const MAX_MINUTES = 15 * 60;
         const existingDailyMinutes = allShifts?.reduce((acc, s) => {
-            // Check if same employee, same date, and not the current shift being edited
             const sameEmp = Number(s.emp_id) === Number(formData.emp_id);
             const sameDate = getDateString(s.date || s.shift_start_time) === formData.shift_date;
             const isNotSelf = !shift.isNew ? s.shift_id !== shift.shift_id : true;
@@ -100,7 +92,6 @@ export default function ShiftEditModal({
             return "Maximum shifts allocated: This employee cannot exceed 15 hours per day.";
         }
 
-        // 2. Overlap Check
         const isOverlapping = allShifts?.some(existingShift => {
             if (!shift.isNew && existingShift.shift_id === shift.shift_id) return false;
 
@@ -124,7 +115,19 @@ export default function ShiftEditModal({
 
     const handleChange = (e) => {
         const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, [name]: value }));
+        
+        setFormData(prev => {
+            const newData = { ...prev, [name]: value };
+
+            // Reset shift_type to 'regular' if client changes to non-outreach while 'travel' was selected
+            if (name === "client_id") {
+                const nextClient = clients?.find(c => Number(c.client_id) === Number(value));
+                if (nextClient?.service_type?.toLowerCase() !== "outreach" && prev.shift_type === "travel") {
+                    newData.shift_type = "regular";
+                }
+            }
+            return newData;
+        });
     };
 
     const handleSave = () => {
@@ -162,14 +165,12 @@ export default function ShiftEditModal({
                     {shift?.isNew ? "Add New Shift" : "Edit Shift"}
                 </h3>
 
-                {/* Unified Validation Alert */}
                 {validationError && (
                     <div style={{ background: "#fee2e2", color: "#b91c1c", padding: "10px", borderRadius: "6px", marginBottom: "1rem", fontSize: "0.85rem", border: "1px solid #fecaca" }}>
                         <strong>Validation Error:</strong> {validationError}
                     </div>
                 )}
 
-                {/* Leave Warning Alert */}
                 {shift?.is_leave && (
                     <div style={{ background: "#fffbeb", color: "#92400e", padding: "10px", borderRadius: "6px", marginBottom: "1rem", fontSize: "0.85rem", border: "1px solid #fef3c7" }}>
                         <strong>Note:</strong> This employee is on leave: {shift.leave_reason}
@@ -187,7 +188,7 @@ export default function ShiftEditModal({
                         <option value="">-- Select Client --</option>
                         {clients?.map((client) => (
                             <option key={client.client_id} value={client.client_id}>
-                                {client.first_name} {client.last_name}
+                                {client.first_name} {client.last_name} ({client.service_type})
                             </option>
                         ))}
                     </select>
@@ -253,6 +254,10 @@ export default function ShiftEditModal({
                         style={{ width: "100%", padding: "8px", border: "1px solid #ccc", borderRadius: "4px" }}
                     >
                         <option value="regular">Regular</option>
+                        {/* Outreach Guard: Only show Travel if Client is Outreach */}
+                        {isOutreachClient && (
+                                <option value="travel">Travel Block</option>
+                            )}
                         <option value="vacation">Vacation</option>
                         <option value="sick">Sick</option>
                         <option value="float">Float</option>

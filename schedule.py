@@ -2441,35 +2441,46 @@ def add_client_shift():
     try:
         emp_id = data.get('emp_id')
         shift_date = data.get("shift_date")
+        client_id = data.get('client_id')
+        requested_shift_type = data.get("shift_type", "regular") # Get the type from frontend
+
+        # --- 1. OUTREACH TRAVEL GUARD ---
+        if client_id:
+            client_res = supabase.table("client").select("service_type").eq("client_id", client_id).single().execute()
+            client_service = client_res.data.get("service_type", "") if client_res.data else ""
+            
+            # Block travel shift if service is not Outreach
+            if requested_shift_type == "travel" and client_service.lower() != "outreach":
+                return jsonify({
+                    "error": f"Travel blocks are only allowed for Outreach services. This client is registered under: {client_service}"
+                }), 400
+        # --------------------------------
 
         # --- NEW CAPACITY CHECK ---
         if emp_id:
-            # 1. Calculate duration of the new shift being added
             new_start = parse_datetime(data['shift_start_time'])
             new_end = parse_datetime(data['shift_end_time'])
             
             if new_start and new_end:
                 new_duration_hrs = (new_end - new_start).total_seconds() / 3600
-                
-                # 2. Get existing hours from the database for this employee/date
-                # This calls the get_daily_total_hours helper function provided earlier
                 existing_hours = get_daily_total_hours(int(emp_id), shift_date)
                 
-                # 3. Validate against 15-hour cap
                 if (existing_hours + new_duration_hrs) > 15:
                     return jsonify({
-                        "error": f"Maximum shifts allocated: Employee is already at {existing_hours:.1f}h. Adding this ({new_duration_hrs:.1f}h) exceeds the 15h daily limit."
+                        "error": f"Maximum shifts allocated: Employee is already at {existing_hours:.1f}h. This addition would exceed the 15h daily limit."
                     }), 400
         # --------------------------
 
-        # We explicitly map ONLY the columns that exist in the 'shift' table
+        # --- INSERT PAYLOAD ---
+        # Note: Ensure your Supabase 'shift' table has a column named 'shift_type'
         insert_payload = {
-            "client_id": int(data['client_id']),
+            "client_id": int(client_id),
             "emp_id": int(emp_id) if emp_id else None,
             "shift_start_time": data['shift_start_time'].replace('T', ' '),
             "shift_end_time": data['shift_end_time'].replace('T', ' '),
             "date": shift_date,
-            "shift_status": data.get("shift_status", "Scheduled")
+            "shift_status": data.get("shift_status", "Scheduled"),
+            "shift_type": requested_shift_type # Save the specific type (travel/outreach)
         }
 
         result = supabase.table("shift").insert(insert_payload).execute()
@@ -2477,9 +2488,7 @@ def add_client_shift():
         if not result.data:
              return jsonify({"error": "Database rejection. Check your data constraints."}), 500
 
-        # Sync to the daily view via RPC
         supabase.rpc("update_daily_shifts", {}).execute()
-
         return jsonify({"message": "Client shift added successfully"}), 200
 
     except Exception as e:
@@ -2813,7 +2822,7 @@ SHIFT_CONVENTIONS = {
     "85 Neeve": {"day": "d", "noon": "n", "evening": "e"},
     "87 Neeve": {"day": "d", "noon": "n", "evening": "e"},
     "Willow Place": {"day": "D", "noon": "N", "evening": "E"},
-    "Outreach": {"day": "O", "noon": "O", "evening": "O"} 
+    "Outreach": {"day": "O", "noon": "O", "evening": "O", "travel": "T"} 
 }
 
 SHIFT_TYPE_MAP = {
@@ -2824,6 +2833,8 @@ SHIFT_TYPE_MAP = {
     "gil-training": "gil",
     "flw-rtw": "flw-rtw",
     "open": "open",
+    "travel": "travel",    # New
+    "outreach": "outreach",
     "leave": "leave",
     "sick": "sick",
     "bereavement": "bereavement",
