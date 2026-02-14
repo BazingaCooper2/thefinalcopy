@@ -31,11 +31,17 @@ export default function SchedulePage() {
   };
 
   const getShiftForDay = (empId, date) => {
-    const dateStr = date.toISOString().split('T')[0];
-    return scheduleData.shift?.find(s =>
-      Number(s.emp_id) === Number(empId) &&
-      (s.date === dateStr || s.shift_start_time?.startsWith(dateStr))
-    );
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const dateStr = `${year}-${month}-${day}`;
+
+    return scheduleData.shift?.find(s => {
+      const isSameEmp = Number(s.emp_id) === Number(empId);
+      const shiftDate = s.date || s.shift_start_time?.split(/[T ]/)[0];
+      
+      return isSameEmp && shiftDate === dateStr;
+    });
   };
 
   const isStartingSoon = (shift) => {
@@ -107,24 +113,37 @@ export default function SchedulePage() {
 
   // ========== DATE NAVIGATION ==========
   const getDays = () => {
-    const days = [];
-    const startObj = new Date(currentDate);
-    for (let i = 0; i < timelineDays; i++) {
-      const d = new Date(startObj);
-      d.setDate(startObj.getDate() + i);
-      days.push(d);
+    const daysList = [];
+    
+    // 1. Set our absolute anchor date (Feb 1, 2026)
+    const anchorDate = new Date(2026, 1, 1); // Note: Month 1 is February
+    
+    // 2. Calculate how many days have passed since the anchor
+    const msPerDay = 24 * 60 * 60 * 1000;
+    const daysSinceAnchor = Math.floor((currentDate - anchorDate) / msPerDay);
+    
+    // 3. Find the start of the current 14-day block
+    const blockIndex = Math.floor(daysSinceAnchor / 14);
+    const startDate = new Date(anchorDate);
+    startDate.setDate(anchorDate.getDate() + (blockIndex * 14));
+
+    // 4. Generate the 14 days for this block
+    for (let i = 0; i < 14; i++) {
+      const d = new Date(startDate);
+      d.setDate(startDate.getDate() + i);
+      daysList.push(d);
     }
-    return days;
+    return daysList;
   };
 
   const days = getDays();
 
   const navigateWeek = (direction) => {
     const d = new Date(currentDate);
-    d.setDate(d.getDate() + (direction * 7));
+    // Move exactly 14 days to jump to the next/prev block
+    d.setDate(d.getDate() + (direction * 14));
     setCurrentDate(d);
   };
-
   // ========== LOADING STATE ==========
   if (loading) {
     return (

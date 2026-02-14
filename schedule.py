@@ -131,24 +131,57 @@ def schedule():
 def edit_schedule():
     data = request.json
     s_id = data.get('shift_id')
+    emp_id = data.get('emp_id')
+    shift_date = data.get('shift_date')
     
-    # CHANGE: Make datetime parsing flexible to handle "T" or space separators
     def flexible_parse(t_str):
         return t_str.replace('T', ' ').split('.')[0] # Standardizes to YYYY-MM-DD HH:MM:SS
 
     full_start = flexible_parse(data['shift_start_time'])
     full_end = flexible_parse(data['shift_end_time'])
 
-    # CHANGE: Update the shift table with ALL fields from the modal
+    # --- NEW CAPACITY ENFORCEMENT ---
+    if emp_id and shift_date:
+        # 1. Calculate duration of the incoming shift update
+        start_dt = parse_datetime(data['shift_start_time'])
+        end_dt = parse_datetime(data['shift_end_time'])
+        
+        if start_dt and end_dt:
+            new_duration_hrs = (end_dt - start_dt).total_seconds() / 3600
+            
+            # 2. Calculate existing hours for this employee on this day
+            # EXCLUDING the current shift (s_id) to avoid double-counting
+            existing_shifts = supabase.table("shift") \
+                .select("shift_start_time, shift_end_time") \
+                .eq("emp_id", emp_id) \
+                .eq("date", shift_date) \
+                .neq("shift_id", s_id) \
+                .execute()
+            
+            total_existing_hrs = 0
+            for s in existing_shifts.data:
+                s_start = parse_datetime(s["shift_start_time"])
+                s_end = parse_datetime(s["shift_end_time"])
+                if s_start and s_end:
+                    total_existing_hrs += (s_end - s_start).total_seconds() / 3600
+            
+            # 3. Block update if it exceeds 15 hours
+            if (total_existing_hrs + new_duration_hrs) > 15:
+                return jsonify({
+                    "error": f"Maximum shifts allocated: Employee is already at {total_existing_hrs:.1f}h. This update would reach {(total_existing_hrs + new_duration_hrs):.1f}h, exceeding the 15h daily limit."
+                }), 400
+    # --------------------------------
+
+    # Update the shift table with ALL fields
     supabase.table("shift").update({
         "shift_start_time": full_start,
         "shift_end_time": full_end,
-        "emp_id": data.get('emp_id'),       # ADD THIS
-        "date": data.get('shift_date'),     # ADD THIS
+        "emp_id": emp_id,
+        "date": shift_date,
         "shift_status": "Scheduled"
     }).eq("shift_id", s_id).execute()
 
-    # Keep your existing logic for daily_shifts and notifications
+    # Sync the changes to the daily view
     supabase.rpc("update_daily_shifts", {}).execute()
     
     return jsonify({"status": "success", "message": "Shift updated"})
@@ -371,6 +404,22 @@ EMPLOYMENT_PRIORITY = {
     "Casual": 3
 }
 
+def get_daily_total_hours(emp_id, shift_date):
+    """Calculates total assigned shift hours for an employee on a given date."""
+    res = supabase.table("shift") \
+        .select("shift_start_time, shift_end_time") \
+        .eq("emp_id", emp_id) \
+        .eq("date", shift_date) \
+        .execute()
+    
+    total_hours = 0
+    for s in res.data:
+        start = parse_datetime(s["shift_start_time"])
+        end = parse_datetime(s["shift_end_time"])
+        if start and end:
+            total_hours += (end - start).total_seconds() / 3600
+    return total_hours
+
 def assign_tasks(changes):
     for ch in changes["new_clients"]:
         shift_id = ch["shift_id"]
@@ -403,24 +452,32 @@ def assign_tasks(changes):
 
         # 2️⃣ Compute eligible employees
         employeetab = get_employees_for_shift(ch["date"])
+        
+        # Calculate the duration of the current incoming shift in hours
+        incoming_start = parse_datetime(ch["shift_start_time"])
+        incoming_end = parse_datetime(ch["shift_end_time"])
+        incoming_duration = (incoming_end - incoming_start).total_seconds() / 3600
 
-        eligible = [
-            e for e in employeetab
-            if overlaps(
-                e,
-                ch["date"],
-                ch["shift_start_time"],
-                ch["shift_end_time"],
-                e["dsst"],
-                e["dset"],
-                e["ssst"],
-                e["sset"],
-                e["sdate"]
+        eligible = []
+        for e in employeetab:
+            # Check for physical time overlap first (your existing logic)
+            is_available = overlaps(
+                e, ch["date"], ch["shift_start_time"], ch["shift_end_time"],
+                e["dsst"], e["dset"], e["ssst"], e["sset"], e["sdate"]
             )
-        ]
+            
+            if is_available:
+                # Check current hours already assigned to this employee for this day
+                # We reuse your existing get_daily_total_hours logic here
+                current_assigned_hours = get_daily_total_hours(e["emp_id"], ch["date"])
+                
+                # Check if adding this shift stays within the 15-hour cap
+                if (current_assigned_hours + incoming_duration) <= 15:
+                    eligible.append(e)
+        # --------------------------------
 
         if not eligible:
-            print(f"[NO MATCH] No eligible employee for shift {shift_id}")
+            print(f"[NO MATCH] No eligible employee or max capacity (15h) reached for shift {shift_id}")
             continue
 
         # 3️⃣ Rank employees
@@ -2382,20 +2439,41 @@ def send_email(subject, body):
 def add_client_shift():
     data = request.json
     try:
+        emp_id = data.get('emp_id')
+        shift_date = data.get("shift_date")
+
+        # --- NEW CAPACITY CHECK ---
+        if emp_id:
+            # 1. Calculate duration of the new shift being added
+            new_start = parse_datetime(data['shift_start_time'])
+            new_end = parse_datetime(data['shift_end_time'])
+            
+            if new_start and new_end:
+                new_duration_hrs = (new_end - new_start).total_seconds() / 3600
+                
+                # 2. Get existing hours from the database for this employee/date
+                # This calls the get_daily_total_hours helper function provided earlier
+                existing_hours = get_daily_total_hours(int(emp_id), shift_date)
+                
+                # 3. Validate against 15-hour cap
+                if (existing_hours + new_duration_hrs) > 15:
+                    return jsonify({
+                        "error": f"Maximum shifts allocated: Employee is already at {existing_hours:.1f}h. Adding this ({new_duration_hrs:.1f}h) exceeds the 15h daily limit."
+                    }), 400
+        # --------------------------
+
         # We explicitly map ONLY the columns that exist in the 'shift' table
-        # to avoid the "Could not find column 'shift_type'" error.
         insert_payload = {
             "client_id": int(data['client_id']),
-            "emp_id": int(data['emp_id']) if data.get('emp_id') else None,
+            "emp_id": int(emp_id) if emp_id else None,
             "shift_start_time": data['shift_start_time'].replace('T', ' '),
             "shift_end_time": data['shift_end_time'].replace('T', ' '),
-            "date": data.get("shift_date"),
+            "date": shift_date,
             "shift_status": data.get("shift_status", "Scheduled")
         }
 
         result = supabase.table("shift").insert(insert_payload).execute()
         
-        # Check if the insert was successful
         if not result.data:
              return jsonify({"error": "Database rejection. Check your data constraints."}), 500
 
