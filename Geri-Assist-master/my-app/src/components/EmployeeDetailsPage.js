@@ -10,40 +10,29 @@ const EmployeeDetails = () => {
     const [showLeaveModal, setShowLeaveModal] = useState(false);
     const [selectedEmployee, setSelectedEmployee] = useState(null);
     const [typeFilter, setTypeFilter] = useState("All");
+    const [statusFilter, setStatusFilter] = useState("All");
+    const [locationFilter, setLocationFilter] = useState("All");
 
     // Fetch employees from backend (Flask + Supabase)
     useEffect(() => {
         fetch(`${API_URL}/employees`)
             .then(res => res.json())
             .then(data => {
-                const STATUS_MAP = {
-                    WT: "Waiting",
-                    TRN: "Training",
-                    FLW: "Follow RTW",
-                    LV: "On Leave",
-                    IN: "Busy",
-                    OUT: "Available",
-                    OFR: "Offer Sent"
-                };
-
                 const enhancedData = (data || []).map(emp => {
-                    const rawStatus = emp.status?.label || "WT";
-
                     return {
                         ...emp,
-                        status_label: STATUS_MAP[rawStatus] || "Available",
-
                         weekly_capacity:
-                            emp.employmee_type === "Full Time"
+                            emp.employee_type === "Full Time"
                                 ? 40
-                                : emp.employmee_type === "Part Time"
+                                : emp.employee_type === "Part Time"
                                     ? 25
                                     : 15,
 
                         hours_worked: Math.floor(Math.random() * 40),
+                        location: emp.service_type,
                         cross_training: emp.department || ["WP"],
                         offer_status: emp.offer_status || null,
-                        employee_type: emp.employmee_type || "Full Time"
+                        employee_type: emp.employee_type || "Full Time"
                     };
                 });
 
@@ -59,27 +48,43 @@ const EmployeeDetails = () => {
 
 
     // Filter employees based on search
-    useEffect(() => {
-        let result = employees;
+useEffect(() => {
+    let result = employees;
 
-        if (search.trim() !== "") {
-            const q = search.toLowerCase();
-            result = result.filter(
-                emp =>
-                    emp.first_name?.toLowerCase().includes(q) ||
-                    emp.last_name?.toLowerCase().includes(q) ||
-                    emp.emp_id?.toString().includes(q)
-            );
-        }
+    // Search filter
+    if (search.trim() !== "") {
+        const q = search.toLowerCase();
+        result = result.filter(
+            emp =>
+                emp.first_name?.toLowerCase().includes(q) ||
+                emp.last_name?.toLowerCase().includes(q) ||
+                emp.emp_id?.toString().includes(q)
+        );
+    }
 
-        if (typeFilter !== "All") {
-            result = result.filter(
-                emp => emp.employee_type === typeFilter
-            );
-        }
+    // Employee type filter
+    if (typeFilter !== "All") {
+        result = result.filter(
+            emp => emp.employee_type === typeFilter
+        );
+    }
 
-        setFilteredEmployees(result);
-    }, [search, typeFilter, employees]);
+    // Employee_status filter (THIS is what you want)
+    if (statusFilter !== "All") {
+        result = result.filter(
+            emp => emp.Employee_status === statusFilter
+        );
+    }
+
+    // Location filter
+    if (locationFilter !== "All") {
+        result = result.filter(
+            emp => (emp.service_type) === locationFilter
+        );
+    }
+
+    setFilteredEmployees(result);
+}, [search, typeFilter, statusFilter, locationFilter, employees]);
 
 
     const navigate = useNavigate();
@@ -240,50 +245,81 @@ const EmployeeDetails = () => {
 
             {/* Search and Filter */}
             <div className="content-card mb-4">
-                <div className="row align-items-end g-3">
-                    <div className="col-md-8">
-                        <div className="input-group-modern mb-0">
-                            <label className="input-label-modern">
-                                <i className="bi bi-search me-2"></i>
-                                Search Employee
-                            </label>
-                            <div className="position-relative">
-                                <input
-                                    type="text"
-                                    className="input-modern"
-                                    placeholder="Search by name or ID..."
-                                    value={search}
-                                    onChange={(e) => setSearch(e.target.value)}
-                                />
-                                {search && (
-                                    <button
-                                        className="btn position-absolute end-0 top-50 translate-middle-y me-2"
-                                        onClick={() => setSearch("")}
-                                        style={{ background: 'transparent', border: 'none', color: 'var(--gray-400)' }}
-                                    >
-                                        <i className="bi bi-x-circle-fill"></i>
-                                    </button>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                    <div className="col-md-4">
-                        <div className="d-flex gap-2">
-                            <select
-                                className="input-modern"
-                                value={typeFilter}
-                                onChange={(e) => setTypeFilter(e.target.value)}
-                            >
-                                <option value="All">All Employees</option>
-                                <option value="Full Time">Full Time</option>
-                                <option value="Part Time">Part Time</option>
-                                <option value="Casual">Casual</option>
-                            </select>
+    <div className="row g-3 align-items-end">
 
-                        </div>
-                    </div>
-                </div>
+        {/* Search */}
+        <div className="col-lg-4 col-md-6">
+            <div className="input-group-modern mb-0">
+                <label className="input-label-modern">
+                    <i className="bi bi-search me-2"></i>
+                    Search Employee
+                </label>
+                <input
+                    type="text"
+                    className="input-modern"
+                    placeholder="Search by name or ID..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                />
             </div>
+        </div>
+
+        {/* Employee Type */}
+        <div className="col-lg-2 col-md-6">
+            <div className="input-group-modern mb-0">
+                <label className="input-label-modern">Type</label>
+                <select
+                    className="input-modern"
+                    value={typeFilter}
+                    onChange={(e) => setTypeFilter(e.target.value)}
+                >
+                    <option value="All">All</option>
+                    <option value="Full Time">Full Time</option>
+                    <option value="Part Time">Part Time</option>
+                    <option value="Casual">Casual</option>
+                </select>
+            </div>
+        </div>
+
+        {/* Status */}
+        <div className="col-lg-3 col-md-6">
+            <div className="input-group-modern mb-0">
+                <label className="input-label-modern">Status</label>
+                <select
+                    className="input-modern"
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                >
+                    <option value="All">All</option>
+                    <option value="Active">Active</option>
+                    <option value="Discarded">Discarded</option>
+
+                </select>
+            </div>
+        </div>
+
+        {/* Location */}
+        <div className="col-lg-3 col-md-6">
+            <div className="input-group-modern mb-0">
+                <label className="input-label-modern">Location</label>
+                <select
+                    className="input-modern"
+                    value={locationFilter}
+                    onChange={(e) => setLocationFilter(e.target.value)}
+                >
+                    <option value="All">All</option>
+                    {[...new Set(employees.map(emp => emp.location || emp.service_type))]
+                        .filter(Boolean)
+                        .map((loc, idx) => (
+                            <option key={idx} value={loc}>{loc}</option>
+                        ))}
+                </select>
+            </div>
+        </div>
+
+    </div>
+</div>
+
 
             {/* Employee Table */}
             <div className="content-card">
@@ -297,6 +333,7 @@ const EmployeeDetails = () => {
                                     <th>Type</th>
                                     <th>Contact</th>
                                     <th>Location</th>
+                                    <th>Service Type</th>
                                     <th>Availability</th>
                                     <th>Capacity</th>
                                     <th className="text-center">Actions</th>
@@ -350,10 +387,20 @@ const EmployeeDetails = () => {
                                             </div>
                                         </td>
                                         <td>
+                                            <span className="badge" style={{
+                                                background: 'var(--info-gradient)',
+                                                color: 'white',
+                                                fontSize: '0.85rem',
+                                                padding: '0.4rem 0.8rem'
+                                            }}>
+                                                {emp.location || emp.service_type || 'N/A'}
+                                            </span>   
+                                        </td>
+                                        <td>
                                             {getCrossTrainingBadges(emp.cross_training || ['WP'])}
                                         </td>
                                         <td>
-                                            {getStatusBadge(emp.status_label, emp.offer_status)}
+                                            {getStatusBadge(emp.Employee_status, emp.offer_status)}
                                         </td>
                                         <td>
                                             {getCapacityBar(emp.hours_worked || 0, emp.weekly_capacity || 40)}

@@ -82,7 +82,7 @@ def dashboard_stats():
         .execute().count
 
     # 6️⃣ Available Employees
-    total_employees = supabase.table("employee") \
+    total_employees = supabase.table("employee_final") \
         .select("emp_id", count="exact") \
         .execute().count
 
@@ -106,7 +106,7 @@ def dashboard_stats():
 @app.route('/scheduled', methods=['GET'])
 def schedule():
     clients = supabase.table("client").select("*").execute()
-    employees = supabase.table("employee").select("*").execute()
+    employees = supabase.table("employee_final").select("*").execute()
     shifts = supabase.table("shift").select("*").execute()
     daily_shifts = supabase.table("daily_shift").select("*").execute()
     leaves = supabase.table("leaves").select("*").execute().data
@@ -344,7 +344,7 @@ def get_employees_for_shift(dateofshift):
     print("Today date is: ", today)
 
     # Join equivalent needs to be handled in Supabase: fetch and merge in Python
-    employee = supabase.table("employee").select("emp_id,seniority, employee_type").order("seniority", desc=True).execute()
+    employee = supabase.table("employee_final").select("emp_id,seniority, employee_type").order("seniority", desc=True).execute()
     daily_shifts = supabase.table("daily_shift").select("emp_id, shift_start_time, shift_end_time, shift_date").eq("shift_date", str(today)).execute()
     shifts = supabase.table("shift").select("emp_id, shift_start_time, shift_end_time, date").eq("date",str(today)).execute()
     leaves_raw = supabase.table("leaves").select("emp_id, leave_start_date, leave_start_time, leave_end_date, leave_end_time").execute().data
@@ -832,8 +832,8 @@ def register():
 
     # Storing plain text to match existing login logic
     hashed_pw = data["password"] 
-    newemp_id = supabase.table("employee").select("emp_id").order("emp_id", desc=True).limit(1).execute().data[0]["emp_id"] + 1
-    response = supabase.table("employee").insert({
+    newemp_id = supabase.table("employee_final").select("emp_id").order("emp_id", desc=True).limit(1).execute().data[0]["emp_id"] + 1
+    response = supabase.table("employee_final").insert({
         "first_name": data["first_name"],
         "last_name": data["last_name"],
         "date_of_birth": data.get("date_of_birth"),
@@ -1047,7 +1047,7 @@ def login():
             return jsonify({"error": "Employee ID and password required"}), 400
 
         # Fetch employee
-        response = supabase.table("employee").select("*").eq("emp_id", emp_id).execute()
+        response = supabase.table("employee_final").select("*").eq("emp_id", emp_id).execute()
         
         if not response.data:
             return jsonify({"error": "Employee not found"}), 400
@@ -1567,7 +1567,7 @@ def get_client_tasks(client_id):
 def get_employees_simple():
     """Get simple employee list for dropdowns"""
     try:
-        response = supabase.table("employee") \
+        response = supabase.table("employee_final") \
             .select("emp_id, first_name, last_name, employee_type, service_type") \
             .execute()
 
@@ -1629,42 +1629,66 @@ def get_employees_with_status():
 
     today = date.today()
     today_str = today.strftime("%Y-%m-%d")
-    employees = supabase.table("employee").select("*").execute().data
+
+    # Fetch employees
+    employees = supabase.table("employee_final").select("*").execute().data
+
+    # Active shifts (currently ongoing)
     shifts = supabase.table("daily_shift") \
         .select("*") \
         .lte("shift_start_time", now_str) \
         .gte("shift_end_time", now_str) \
         .execute().data
 
+    # Active leaves (today)
     leaves = supabase.table("leaves") \
         .select("*") \
         .lte("leave_start_date", today_str) \
         .gte("leave_end_date", today_str) \
         .execute().data
-    #attendance = supabase.table("attendance").select("*").execute().data
-    #offers = supabase.table("offers").eq("status", "sent").execute().data
 
     result = []
 
     for emp in employees:
+
         status = resolve_employee_status(
             emp["emp_id"],
             shifts,
-            leaves,
-            
+            leaves
         )
 
         result.append({
             "emp_id": emp["emp_id"],
-            "first_name": emp["first_name"],
+            "first_name": emp.get("first_name"),
             "last_name": emp.get("last_name", ""),
+            "phone": emp.get("phone"),
+            "email": emp.get("email"),
+            "designation": emp.get("designation") or emp.get("job_title"),
+
+            # Location info
             "service_type": emp.get("service_type"),
-            "status": status,
-            "employmee_type":emp.get("employee_type"),
-            "department": emp.get("department"),   
+            "city": emp.get("city"),
+            "state": emp.get("state"),
+
+            # Proper employee type (FIXED)
+            "employee_type": emp.get("status"),  # your DB stores FT/PT here
+
+            # Department / Cross training
+            "department": emp.get("department") or [],
+
+            # Computed availability status
+            "status_label": status,
+
+            # Preserve original DB status if needed
+            "Employee_status": emp.get("Employee_status"),
+
+            # Optional additional useful fields
+            "seniority": emp.get("seniority"),
+            "joining_date": emp.get("joining_date"),
         })
 
     return result
+
 @app.route("/dashboard/employee-status", methods=["GET"])
 def employee_status_stats():
     from datetime import datetime
@@ -1673,7 +1697,7 @@ def employee_status_stats():
 
     # Total employees
     total_employees = (
-        supabase.table("employee")
+        supabase.table("employee_final")
         .select("emp_id", count="exact")
         .execute()
         .count
@@ -2686,7 +2710,7 @@ def client_generate_next_month_shifts():
 
 @app.route("/employees/<int:emp_id>")
 def get_employee_with_id(emp_id):
-    emp = supabase.table("employee").select("*").eq("emp_id", emp_id).execute()
+    emp = supabase.table("employee_final").select("*").eq("emp_id", emp_id).execute()
     shift = supabase.table("shift").select("*").eq("emp_id", emp_id).execute()
     dailyshift = supabase.table("daily_shift").select("*").eq("emp_id", emp_id).execute()
     data = {
@@ -2811,7 +2835,7 @@ def update_employee_settings(emp_id):
         return jsonify({"status": "error", "message": "No valid fields to update"}), 400
     print(data)
     try:
-        update_result = supabase.table("employee").update(data).eq("emp_id", emp_id).execute()
+        update_result = supabase.table("employee_final").update(data).eq("emp_id", emp_id).execute()
 
         return jsonify({"status": "success", "updated": update_result.data}), 200
 
@@ -2862,7 +2886,7 @@ def masterSchedule(service: str):
         decoded_service = unquote(service).strip()
         
         # 2. Fetch employees for this service
-        emp_res = supabase.table("employee").select("*").ilike("service_type", decoded_service).execute()
+        emp_res = supabase.table("employee_final").select("*").ilike("service_type", decoded_service).execute()
         employees = emp_res.data or []
         
         if not employees:
@@ -3229,7 +3253,7 @@ def shifts_for_tasks_today():
 def get_employee_role(emp_id: int) -> str:
     res = (
         supabase
-        .table("employee")
+        .table("employee_final")
         .select("emp_role")
         .eq("emp_id", emp_id)
         .single()
@@ -3269,7 +3293,7 @@ def get_shift_offers():
 
         employees = {
             e["emp_id"]: e
-            for e in supabase.table("employee")
+            for e in supabase.table("employee_final")
             .select("emp_id, first_name, last_name, employee_type")
             .in_("emp_id", emp_ids)
             .execute()
@@ -3670,7 +3694,7 @@ def admin_schedule():
 
     employees = {
         e["emp_id"]: e
-        for e in supabase.table("employee")
+        for e in supabase.table("employee_final")
         .select("emp_id, first_name, last_name")
         .in_("emp_id", emp_ids)
         .execute().data

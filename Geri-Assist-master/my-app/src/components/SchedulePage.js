@@ -13,7 +13,7 @@ export default function SchedulePage() {
   const [selectedLocation, setSelectedLocation] = useState('85 Neeve');
   const [timelineDays, setTimelineDays] = useState(14);
 
-  const locations = ['85 Neeve', '87 Neeve', 'Willow Place', 'Outreach', 'Assisted Living', 'Seniors Assisted Living'];
+  const locations = ['85 Neeve', '87 Neeve', 'Willow Place', 'Outreach', 'Dublin', 'Grange'];
 
   // ========== HELPER FUNCTIONS ==========
   const formatTime = (timeStr) => {
