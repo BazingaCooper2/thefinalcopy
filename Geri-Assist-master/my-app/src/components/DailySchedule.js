@@ -6,12 +6,11 @@ import { getEmpId } from '../utils/emp';
 import ShiftEditModal from './ShiftEditModal'; 
 
 /**
- * DailySchedule Component - Google Calendar Style
- * - Minute-level precision for shifts
- * - Click-and-drag to create shifts with custom duration
- * - Resize shifts by dragging edges
- * - Better overlap handling with side-by-side columns
- * - Smooth drag and drop with minute-level snapping
+ * DailySchedule Component - WITH INTEGRATED CONFLICT RESOLUTION & LEAVE DETECTION
+ * - Shows conflict indicator banner at top
+ * - Opens modal with recommendations when clicked
+ * - Detects employees on leave and prevents shift editing
+ * - Provides reschedule button for employees on leave
  */
 export default function DailySchedule() {
     const [currentDate, setCurrentDate] = useState(new Date());
@@ -24,15 +23,227 @@ export default function DailySchedule() {
     const [resizing, setResizing] = useState(null);
     const [draggingShift, setDraggingShift] = useState(null);
     
+    // NEW: Conflict resolution states
+    const [conflicts, setConflicts] = useState([]);
+    const [showConflictModal, setShowConflictModal] = useState(false);
+    const [selectedConflict, setSelectedConflict] = useState(null);
+    const [recommendations, setRecommendations] = useState([]);
+    const [conflictProcessing, setConflictProcessing] = useState(false);
+    
+    // NEW: Leave tracking states
+    const [leaves, setLeaves] = useState([]);
+    const [showRescheduleModal, setShowRescheduleModal] = useState(false);
+    const [selectedEmployeeForReschedule, setSelectedEmployeeForReschedule] = useState(null);
+    const [shiftsToReschedule, setShiftsToReschedule] = useState([]);
+    
     const timelineRef = useRef(null);
     const locations = ['All Locations', '85 Neeve', '87 Neeve', 'Willow Place', 'Outreach', 'Assisted Living', 'Seniors Assisted Living'];
 
-    // Generate 15-minute intervals for precise positioning
     const PIXELS_PER_HOUR = 60;
     const timeSlots = Array.from({ length: 24 }, (_, hour) => ({
         hour,
         label: `${hour.toString().padStart(2, '0')}:00`
     }));
+
+    // ========== CHECK IF EMPLOYEE IS ON LEAVE ==========
+    const isEmployeeOnLeave = useCallback((empId, date) => {
+        const dateStr = typeof date === 'string' ? date : date.toISOString().split('T')[0];
+        
+        return leaves.some(leave => {
+            if (leave.emp_id !== empId) return false;
+            
+            const leaveStart = new Date(leave.leave_start_date);
+            const leaveEnd = new Date(leave.leave_end_date);
+            const checkDate = new Date(dateStr);
+            
+            return checkDate >= leaveStart && checkDate <= leaveEnd;
+        });
+    }, [leaves]);
+
+    // ========== GET EMPLOYEE LEAVE INFO ==========
+    const getEmployeeLeaveInfo = useCallback((empId, date) => {
+        const dateStr = typeof date === 'string' ? date : date.toISOString().split('T')[0];
+        
+        const leave = leaves.find(l => {
+            if (l.emp_id !== empId) return false;
+            
+            const leaveStart = new Date(l.leave_start_date);
+            const leaveEnd = new Date(l.leave_end_date);
+            const checkDate = new Date(dateStr);
+            
+            return checkDate >= leaveStart && checkDate <= leaveEnd;
+        });
+        
+        return leave;
+    }, [leaves]);
+
+    // ========== FETCH LEAVES ==========
+    const fetchLeaves = useCallback(async () => {
+        try {
+            // Get all employee IDs from the schedule
+            const employeeIds = scheduleData.employee.map(e => e.emp_id);
+            
+            if (employeeIds.length === 0) return;
+            
+            // Fetch leaves for all employees
+            const leavePromises = employeeIds.map(empId => 
+                axios.get(`${API_URL}/unavailability/${empId}`)
+                    .then(res => res.data?.unavailability || [])
+                    .catch(err => {
+                        console.error(`Error fetching leaves for employee ${empId}:`, err);
+                        return [];
+                    })
+            );
+            
+            const allLeavesArrays = await Promise.all(leavePromises);
+            const allLeaves = allLeavesArrays.flat();
+            
+            // Filter to get current and upcoming leaves
+            const today = new Date(currentDate.toISOString().split('T')[0]);
+            const relevantLeaves = allLeaves.filter(leave => {
+                const leaveEnd = new Date(leave.leave_end_date);
+                // Include leaves that haven't ended yet
+                return leaveEnd >= today;
+            });
+            
+            setLeaves(relevantLeaves);
+        } catch (error) {
+            console.error('Error fetching leaves:', error);
+            // Fallback: try getting from schedule data
+            if (scheduleData.shift) {
+                const uniqueLeaves = scheduleData.shift
+                    .filter(s => s.is_leave)
+                    .map(s => ({
+                        emp_id: s.emp_id,
+                        leave_start_date: s.date,
+                        leave_end_date: s.date,
+                        leave_type: s.leave_reason || 'Leave',
+                        leave_reason: s.leave_reason
+                    }));
+                setLeaves(uniqueLeaves);
+            }
+        }
+    }, [currentDate, scheduleData.employee, scheduleData.shift]);
+
+    // ========== OPEN RESCHEDULE MODAL ==========
+    const openRescheduleModal = (empId) => {
+        const dateStr = currentDate.toISOString().split('T')[0];
+        const employeeShifts = scheduleData.shift.filter(s => 
+            Number(s.emp_id) === Number(empId) && 
+            (s.date === dateStr || s.shift_start_time?.startsWith(dateStr))
+        );
+        
+        const employee = scheduleData.employee.find(e => e.emp_id === empId);
+        
+        setSelectedEmployeeForReschedule(employee);
+        setShiftsToReschedule(employeeShifts);
+        setShowRescheduleModal(true);
+    };
+
+    // ========== RESCHEDULE SHIFT ==========
+    const rescheduleShift = async (shiftId) => {
+        try {
+            // Open conflict resolution for this specific shift
+            await openConflictResolution(shiftId);
+            
+            // Remove from reschedule list
+            setShiftsToReschedule(prev => prev.filter(s => s.shift_id !== shiftId));
+            
+            // If no more shifts, close modal
+            if (shiftsToReschedule.length <= 1) {
+                setShowRescheduleModal(false);
+            }
+        } catch (error) {
+            console.error('Error rescheduling shift:', error);
+            alert('Error: ' + (error.response?.data?.error || 'Failed to reschedule'));
+        }
+    };
+
+    // ========== FETCH CONFLICTS ==========
+    const fetchConflicts = useCallback(async () => {
+        try {
+            const response = await axios.get(`${API_URL}/reassignments/pending`);
+            setConflicts(response.data.conflicts || []);
+        } catch (error) {
+            console.error('Error fetching conflicts:', error);
+        }
+    }, []);
+
+    // ========== OPEN CONFLICT RESOLUTION MODAL ==========
+    const openConflictResolution = async (shiftId) => {
+        try {
+            setConflictProcessing(true);
+            const response = await axios.get(`${API_URL}/shift/${shiftId}/recommendations`);
+            setSelectedConflict(response.data.shift);
+            setRecommendations(response.data.recommendations || []);
+            setShowConflictModal(true);
+            setConflictProcessing(false);
+        } catch (error) {
+            console.error('Error fetching recommendations:', error);
+            setConflictProcessing(false);
+            alert('Error loading recommendations');
+        }
+    };
+
+    // ========== APPROVE REASSIGNMENT ==========
+    const approveReassignment = async (empId) => {
+        if (!selectedConflict) return;
+        
+        try {
+            setConflictProcessing(true);
+            await axios.post(`${API_URL}/reassignment/approve`, {
+                shift_id: selectedConflict.shift_id,
+                recommended_emp_id: empId
+            });
+            
+            setShowConflictModal(false);
+            fetchScheduleData();
+            fetchConflicts();
+            setConflictProcessing(false);
+            
+            showSuccessToast('✅ Shift successfully reassigned!');
+        } catch (error) {
+            console.error('Error approving reassignment:', error);
+            alert('Error: ' + (error.response?.data?.error || 'Failed to approve'));
+            setConflictProcessing(false);
+        }
+    };
+
+    // ========== REJECT ALL ==========
+    const rejectAllRecommendations = async () => {
+        if (!selectedConflict) return;
+        
+        if (!window.confirm('Reject all recommendations? Shift will be marked for manual assignment.')) {
+            return;
+        }
+        
+        try {
+            setConflictProcessing(true);
+            await axios.post(`${API_URL}/reassignment/reject-all`, {
+                shift_id: selectedConflict.shift_id
+            });
+            
+            setShowConflictModal(false);
+            fetchScheduleData();
+            fetchConflicts();
+            setConflictProcessing(false);
+            
+            showSuccessToast('Shift marked for manual assignment');
+        } catch (error) {
+            console.error('Error rejecting recommendations:', error);
+            setConflictProcessing(false);
+        }
+    };
+
+    // ========== SUCCESS TOAST ==========
+    const [showToast, setShowToast] = useState(false);
+    const [toastMessage, setToastMessage] = useState('');
+    
+    const showSuccessToast = (message) => {
+        setToastMessage(message);
+        setShowToast(true);
+        setTimeout(() => setShowToast(false), 3000);
+    };
 
     const fetchScheduleData = useCallback(async () => {
         const empId = getEmpId();
@@ -51,11 +262,31 @@ export default function DailySchedule() {
 
     useEffect(() => {
         fetchScheduleData();
-    }, [currentDate, fetchScheduleData]);
+        fetchConflicts();
+    }, [currentDate, fetchScheduleData, fetchConflicts]);
+
+    // Separate effect for leaves - runs after schedule data is loaded
+    useEffect(() => {
+        if (scheduleData.employee.length > 0) {
+            fetchLeaves();
+        }
+    }, [scheduleData.employee, fetchLeaves]);
+
+    // Auto-refresh
+    useEffect(() => {
+        const interval = setInterval(() => {
+            fetchScheduleData();
+            fetchConflicts();
+            if (scheduleData.employee.length > 0) {
+                fetchLeaves();
+            }
+        }, 30000);
+        
+        return () => clearInterval(interval);
+    }, [fetchScheduleData, fetchConflicts, fetchLeaves, scheduleData.employee]);
 
     // ========== TIME CONVERSION HELPERS ==========
     const parseTimeToMinutes = (timeStr) => {
-        // Handle both "2024-01-01T08:30:00" and "2024-01-01 08:30:00" formats
         const timePart = timeStr?.split(/[T ]/)[1] || "00:00:00";
         const [hours, minutes] = timePart.split(':').map(Number);
         return hours * 60 + (minutes || 0);
@@ -69,30 +300,27 @@ export default function DailySchedule() {
 
     const formatTimeDisplay = (timeStr) => {
         const timePart = timeStr?.split(/[T ]/)[1] || "00:00:00";
-        return timePart.slice(0, 5); // HH:MM
+        return timePart.slice(0, 5);
     };
 
     const checkCapacity = (empId, dateStr, shiftId, newStartMins, newEndMins, allShifts) => {
-    const MAX_MINUTES = 15 * 60; // 900 minutes
-    const newDuration = newEndMins - newStartMins;
+        const MAX_MINUTES = 15 * 60;
+        const newDuration = newEndMins - newStartMins;
 
-    const otherShiftsMinutes = allShifts
-        .filter(s => 
-            Number(s.emp_id) === Number(empId) && 
-            (s.date === dateStr || s.shift_start_time?.startsWith(dateStr)) &&
-            // CRITICAL: Exclude the shift we are currently editing/resizing
-            String(s.shift_id) !== String(shiftId) 
-        )
-        .reduce((sum, s) => {
-            const start = parseTimeToMinutes(s.shift_start_time);
-            const end = parseTimeToMinutes(s.shift_end_time);
-            return sum + (end - start);
-        }, 0);
+        const otherShiftsMinutes = allShifts
+            .filter(s => 
+                Number(s.emp_id) === Number(empId) && 
+                (s.date === dateStr || s.shift_start_time?.startsWith(dateStr)) &&
+                String(s.shift_id) !== String(shiftId) 
+            )
+            .reduce((sum, s) => {
+                const start = parseTimeToMinutes(s.shift_start_time);
+                const end = parseTimeToMinutes(s.shift_end_time);
+                return sum + (end - start);
+            }, 0);
 
-    // This now allows reducing: (Other shifts) + (Your new smaller duration) 
-    // will be less than the previous total.
-    return (otherShiftsMinutes + newDuration) <= MAX_MINUTES;
-};
+        return (otherShiftsMinutes + newDuration) <= MAX_MINUTES;
+    };
 
     const getPositionFromEvent = (e, empId) => {
         const row = e.currentTarget.closest('.employee-time-slots');
@@ -100,12 +328,20 @@ export default function DailySchedule() {
         
         const rect = row.getBoundingClientRect();
         const x = e.clientX - rect.left;
-        const minutes = Math.round((x / rect.width) * 24 * 60 / 15) * 15; // Snap to 15-min intervals
+        const minutes = Math.round((x / rect.width) * 24 * 60 / 15) * 15;
         return { empId, minutes: Math.max(0, Math.min(minutes, 24 * 60 - 15)) };
     };
 
     // ========== DRAG-TO-CREATE SHIFT ==========
     const handleMouseDown = (e, empId) => {
+        // PREVENT if employee is on leave
+        if (isEmployeeOnLeave(empId, currentDate)) {
+            e.preventDefault();
+            const leaveInfo = getEmployeeLeaveInfo(empId, currentDate);
+            alert(`Cannot add shifts - Employee is on ${leaveInfo?.leave_type || 'leave'}`);
+            return;
+        }
+        
         if (e.target.classList.contains('shift-block') || e.target.closest('.shift-block')) return;
         
         const pos = getPositionFromEvent(e, empId);
@@ -114,7 +350,7 @@ export default function DailySchedule() {
         setDragCreate({
             empId,
             startMinutes: pos.minutes,
-            endMinutes: pos.minutes + 60, // Default 1 hour
+            endMinutes: pos.minutes + 60,
             isCreating: true
         });
     };
@@ -173,6 +409,14 @@ export default function DailySchedule() {
     // ========== RESIZE SHIFT ==========
     const handleResizeStart = (e, shift, edge) => {
         e.stopPropagation();
+        
+        // PREVENT if employee is on leave
+        if (isEmployeeOnLeave(shift.emp_id, currentDate)) {
+            const leaveInfo = getEmployeeLeaveInfo(shift.emp_id, currentDate);
+            alert(`Cannot edit shifts - Employee is on ${leaveInfo?.leave_type || 'leave'}`);
+            return;
+        }
+        
         setResizing({
             shift,
             edge,
@@ -201,41 +445,40 @@ export default function DailySchedule() {
     };
 
     const saveResize = async () => {
-    if (!resizing) return;
-    
-    const dateStr = currentDate.toISOString().split('T')[0];
+        if (!resizing) return;
+        
+        const dateStr = currentDate.toISOString().split('T')[0];
 
-    // Check if the new size exceeds 15 hours
-    const isValid = checkCapacity(
-        resizing.shift.emp_id, 
-        dateStr, 
-        resizing.shift.shift_id, 
-        resizing.startMinutes, 
-        resizing.endMinutes, 
-        scheduleData.shift
-    );
+        const isValid = checkCapacity(
+            resizing.shift.emp_id, 
+            dateStr, 
+            resizing.shift.shift_id, 
+            resizing.startMinutes, 
+            resizing.endMinutes, 
+            scheduleData.shift
+        );
 
-    if (!isValid) {
-        alert("Maximum shifts allocated: This employee cannot exceed 15 hours per day.");
-        setResizing(null);
-        fetchScheduleData(); // Refresh to snap the shift back to its previous valid size
-        return;
-    }
+        if (!isValid) {
+            alert("Maximum shifts allocated: This employee cannot exceed 15 hours per day.");
+            setResizing(null);
+            fetchScheduleData();
+            return;
+        }
 
-    try {
-        await axios.post(`${API_URL}/submit`, {
-            shift_id: resizing.shift.shift_id,
-            emp_id: resizing.shift.emp_id,
-            shift_start_time: minutesToTimeString(resizing.startMinutes, dateStr),
-            shift_end_time: minutesToTimeString(resizing.endMinutes, dateStr),
-            shift_date: dateStr,
-            shift_status: resizing.shift.shift_status || "Scheduled"
-        });
-        fetchScheduleData();
-    } catch (err) {
-        console.error("Resize failed:", err);
-    }
-};
+        try {
+            await axios.post(`${API_URL}/submit`, {
+                shift_id: resizing.shift.shift_id,
+                emp_id: resizing.shift.emp_id,
+                shift_start_time: minutesToTimeString(resizing.startMinutes, dateStr),
+                shift_end_time: minutesToTimeString(resizing.endMinutes, dateStr),
+                shift_date: dateStr,
+                shift_status: resizing.shift.shift_status || "Scheduled"
+            });
+            fetchScheduleData();
+        } catch (err) {
+            console.error("Resize failed:", err);
+        }
+    };
 
     useEffect(() => {
         if (resizing === null) return;
@@ -249,6 +492,14 @@ export default function DailySchedule() {
     // ========== DRAG SHIFT ==========
     const handleShiftDragStart = (e, shift) => {
         e.stopPropagation();
+        
+        // PREVENT if employee is on leave
+        if (isEmployeeOnLeave(shift.emp_id, currentDate)) {
+            const leaveInfo = getEmployeeLeaveInfo(shift.emp_id, currentDate);
+            alert(`Cannot move shifts - Employee is on ${leaveInfo?.leave_type || 'leave'}`);
+            return;
+        }
+        
         setDraggingShift({
             shift,
             startMinutes: parseTimeToMinutes(shift.shift_start_time),
@@ -281,41 +532,40 @@ export default function DailySchedule() {
     };
 
     const saveDrag = async () => {
-    if (!draggingShift?.empId) return;
-    
-    const dateStr = currentDate.toISOString().split('T')[0];
+        if (!draggingShift?.empId) return;
+        
+        const dateStr = currentDate.toISOString().split('T')[0];
 
-    // Check if moving this shift puts the target employee over 15 hours
-    const isValid = checkCapacity(
-        draggingShift.empId, 
-        dateStr, 
-        draggingShift.shift.shift_id, 
-        draggingShift.startMinutes, 
-        draggingShift.endMinutes, 
-        scheduleData.shift
-    );
+        const isValid = checkCapacity(
+            draggingShift.empId, 
+            dateStr, 
+            draggingShift.shift.shift_id, 
+            draggingShift.startMinutes, 
+            draggingShift.endMinutes, 
+            scheduleData.shift
+        );
 
-    if (!isValid) {
-        alert("Maximum shifts allocated: This employee cannot exceed 15 hours per day.");
-        setDraggingShift(null);
-        fetchScheduleData(); // Refresh to snap the shift back to its original position
-        return;
-    }
+        if (!isValid) {
+            alert("Maximum shifts allocated: This employee cannot exceed 15 hours per day.");
+            setDraggingShift(null);
+            fetchScheduleData();
+            return;
+        }
 
-    try {
-        await axios.post(`${API_URL}/submit`, {
-            shift_id: draggingShift.shift.shift_id,
-            emp_id: draggingShift.empId,
-            shift_start_time: minutesToTimeString(draggingShift.startMinutes, dateStr),
-            shift_end_time: minutesToTimeString(draggingShift.endMinutes, dateStr),
-            shift_date: dateStr,
-            shift_status: draggingShift.shift.shift_status || "Scheduled"
-        });
-        fetchScheduleData();
-    } catch (err) {
-        console.error("Drag failed:", err);
-    }
-};
+        try {
+            await axios.post(`${API_URL}/submit`, {
+                shift_id: draggingShift.shift.shift_id,
+                emp_id: draggingShift.empId,
+                shift_start_time: minutesToTimeString(draggingShift.startMinutes, dateStr),
+                shift_end_time: minutesToTimeString(draggingShift.endMinutes, dateStr),
+                shift_date: dateStr,
+                shift_status: draggingShift.shift.shift_status || "Scheduled"
+            });
+            fetchScheduleData();
+        } catch (err) {
+            console.error("Drag failed:", err);
+        }
+    };
 
     useEffect(() => {
         if (draggingShift === null) return;
@@ -329,6 +579,19 @@ export default function DailySchedule() {
     // ========== SHIFT MODAL ==========
     const handleShiftClick = (e, shift) => {
         e.stopPropagation();
+        
+        // If shift has conflict, open conflict resolution
+        if (shift.shift_status === "⚠️ Conflicting Leave") {
+            openConflictResolution(shift.shift_id);
+            return;
+        }
+        
+        // If employee is on leave, open reschedule for this specific shift
+        if (isEmployeeOnLeave(shift.emp_id, currentDate)) {
+            openConflictResolution(shift.shift_id);
+            return;
+        }
+        
         setSelectedShift({ ...shift, isNew: false });
         setShowShiftModal(true);
     };
@@ -386,7 +649,6 @@ export default function DailySchedule() {
         );
     };
 
-    // ========== OVERLAP DETECTION ==========
     const calculateOverlaps = (shifts) => {
         const sorted = [...shifts].sort((a, b) => 
             parseTimeToMinutes(a.shift_start_time) - parseTimeToMinutes(b.shift_start_time)
@@ -436,6 +698,53 @@ export default function DailySchedule() {
 
     return (
         <div className="daily-schedule-wrapper">
+            {/* Success Toast */}
+            {showToast && (
+                <div 
+                    className="position-fixed top-0 start-50 translate-middle-x mt-3 alert alert-success shadow-lg"
+                    style={{ zIndex: 9999, minWidth: '300px' }}
+                >
+                    {toastMessage}
+                </div>
+            )}
+
+            {/* Conflict Warning Banner */}
+            {conflicts.length > 0 && (
+                <div className="alert alert-warning mb-3 shadow-sm" style={{ borderLeft: '4px solid #f59e0b' }}>
+                    <div className="d-flex align-items-center justify-content-between">
+                        <div className="d-flex align-items-center flex-grow-1">
+                            <i className="bi bi-exclamation-triangle-fill me-3" style={{ fontSize: '1.5rem' }}></i>
+                            <div>
+                                <h6 className="mb-1 fw-bold">
+                                    {conflicts.length} Shift Conflict{conflicts.length > 1 ? 's' : ''} Detected
+                                </h6>
+                                <p className="mb-0 small">
+                                    Shifts affected by employee leaves - click conflicting shifts to review recommendations
+                                </p>
+                            </div>
+                        </div>
+                        <div className="d-flex gap-2">
+                            {conflicts.slice(0, 3).map(conflict => (
+                                <button 
+                                    key={conflict.shift_id}
+                                    className="btn btn-sm btn-warning"
+                                    onClick={() => openConflictResolution(conflict.shift_id)}
+                                    disabled={conflictProcessing}
+                                >
+                                    <i className="bi bi-exclamation-circle me-1"></i>
+                                    Shift #{conflict.shift_id}
+                                </button>
+                            ))}
+                            {conflicts.length > 3 && (
+                                <span className="badge bg-warning text-dark align-self-center">
+                                    +{conflicts.length - 3} more
+                                </span>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <div className="schedule-top-bar">
                 <div className="top-bar-left">
                     <button className="today-btn-small" onClick={() => setCurrentDate(new Date())}>Today</button>
@@ -458,6 +767,12 @@ export default function DailySchedule() {
                     <span className="current-date-label">
                         {currentDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
                     </span>
+                    {conflicts.length > 0 && (
+                        <span className="badge bg-danger ms-2">
+                            <i className="bi bi-exclamation-triangle me-1"></i>
+                            {conflicts.length} Conflict{conflicts.length > 1 ? 's' : ''}
+                        </span>
+                    )}
                 </div>
                 <div className="top-bar-right">
                     <select className="location-select" value={selectedLocation} onChange={(e) => setSelectedLocation(e.target.value)}>
@@ -485,13 +800,49 @@ export default function DailySchedule() {
                             const dailyShift = getEmployeeDailyShift(employee.emp_id, currentDate);
                             const clientShifts = getEmployeeShiftsForDate(employee.emp_id, currentDate);
                             const overlaps = calculateOverlaps(clientShifts);
+                            const onLeave = isEmployeeOnLeave(employee.emp_id, currentDate);
+                            const leaveInfo = getEmployeeLeaveInfo(employee.emp_id, currentDate);
 
                             return (
-                                <div className="employee-row" key={employee.emp_id} data-emp-id={employee.emp_id}>
+                                <div 
+                                    className={`employee-row ${onLeave ? 'employee-on-leave' : ''}`} 
+                                    key={employee.emp_id} 
+                                    data-emp-id={employee.emp_id}
+                                    style={{
+                                        opacity: onLeave ? 0.7 : 1,
+                                        background: onLeave ? '#fff3cd' : 'transparent'
+                                    }}
+                                >
                                     <div className="employee-name-cell">
-                                        <div className="employee-name">{employee.first_name} {employee.last_name}</div>
-                                        <div className="employee-role" style={{ fontSize: '0.75rem', color: '#666' }}>
-                                            {employee.service_type || 'Staff'}
+                                        <div className="d-flex align-items-center justify-content-between w-100">
+                                            <div className="flex-grow-1">
+                                                <div className="employee-name">{employee.first_name} {employee.last_name}</div>
+                                                <div className="employee-role" style={{ fontSize: '0.75rem', color: '#666' }}>
+                                                    {employee.service_type || 'Staff'}
+                                                </div>
+                                                {onLeave && (
+                                                    <div className="mt-1">
+                                                        <span className="badge bg-danger">
+                                                            <i className="bi bi-calendar-x me-1"></i>
+                                                            {leaveInfo?.leave_type || 'On Leave'}
+                                                        </span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            {onLeave && clientShifts.length > 0 && (
+                                                <button
+                                                    className="btn btn-sm btn-warning fw-bold ms-2"
+                                                    onClick={() => openRescheduleModal(employee.emp_id)}
+                                                    title="View all shifts to reschedule"
+                                                    style={{
+                                                        boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                                                        border: '1px solid #d97706'
+                                                    }}
+                                                >
+                                                    <i className="bi bi-calendar-event me-1"></i>
+                                                    Reschedule ({clientShifts.length})
+                                                </button>
+                                            )}
                                         </div>
                                     </div>
 
@@ -499,10 +850,13 @@ export default function DailySchedule() {
 
                                     <div 
                                         className="employee-time-slots"
-                                        onMouseDown={(e) => handleMouseDown(e, employee.emp_id)}
-                                        style={{ position: 'relative', cursor: 'crosshair' }}
+                                        onMouseDown={(e) => !onLeave && handleMouseDown(e, employee.emp_id)}
+                                        style={{ 
+                                            position: 'relative', 
+                                            cursor: onLeave ? 'not-allowed' : 'crosshair',
+                                            pointerEvents: 'auto' // Changed from conditional to always allow
+                                        }}
                                     >
-                                        {/* Hour markers */}
                                         {timeSlots.map((slot, i) => (
                                             <div 
                                                 key={i} 
@@ -514,8 +868,71 @@ export default function DailySchedule() {
                                             />
                                         ))}
 
+                                        {/* LEAVE DURATION BLOCK - Show full leave period */}
+                                        {onLeave && leaveInfo && (() => {
+                                            // Parse leave times
+                                            const leaveStartTime = leaveInfo.leave_start_time || "00:00:00";
+                                            const leaveEndTime = leaveInfo.leave_end_time || "23:59:59";
+                                            
+                                            const startMins = parseTimeToMinutes(leaveStartTime);
+                                            const endMins = parseTimeToMinutes(leaveEndTime);
+                                            
+                                            const leftPercent = (startMins / (24 * 60)) * 100;
+                                            const widthPercent = ((endMins - startMins) / (24 * 60)) * 100;
+
+                                            return (
+                                                <div
+                                                    className="leave-duration-block"
+                                                    style={{
+                                                        position: 'absolute',
+                                                        left: `${leftPercent}%`,
+                                                        width: `${widthPercent}%`,
+                                                        top: 0,
+                                                        bottom: 0,
+                                                        background: 'linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%)',
+                                                        opacity: 0.85,
+                                                        zIndex: 100,
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center',
+                                                        flexDirection: 'column',
+                                                        gap: '4px',
+                                                        borderRadius: '4px',
+                                                        border: '2px solid #c92a2a',
+                                                        boxShadow: '0 2px 8px rgba(201, 42, 42, 0.3)',
+                                                        pointerEvents: 'none'
+                                                    }}
+                                                >
+                                                    <div style={{
+                                                        color: 'white',
+                                                        fontWeight: 'bold',
+                                                        fontSize: '0.9rem',
+                                                        textShadow: '0 1px 2px rgba(0,0,0,0.3)',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '6px'
+                                                    }}>
+                                                        <i className="bi bi-calendar-x" style={{ fontSize: '1.2rem' }}></i>
+                                                        {leaveInfo.leave_type || 'On Leave'}
+                                                    </div>
+                                                    {clientShifts.length > 0 && (
+                                                        <div style={{
+                                                            color: 'white',
+                                                            fontSize: '0.75rem',
+                                                            background: 'rgba(0,0,0,0.2)',
+                                                            padding: '2px 8px',
+                                                            borderRadius: '12px',
+                                                            fontWeight: '600'
+                                                        }}>
+                                                            {clientShifts.length} shift{clientShifts.length > 1 ? 's' : ''} to reschedule
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })()}
+
                                         {/* Daily availability background */}
-                                        {dailyShift && dailyShift.shift_start_time && (() => {
+                                        {dailyShift && dailyShift.shift_start_time && !onLeave && (() => {
                                             const startMins = parseTimeToMinutes(dailyShift.shift_start_time);
                                             const endMins = parseTimeToMinutes(dailyShift.shift_end_time);
                                             const leftPercent = (startMins / (24 * 60)) * 100;
@@ -547,7 +964,7 @@ export default function DailySchedule() {
                                             );
                                         })()}
 
-                                        {/* Client shifts with overlap handling */}
+                                        {/* Client shifts with conflict indicators */}
                                         {clientShifts.map((shift) => {
                                             const client = getClient(shift.client_id);
                                             const startMins = parseTimeToMinutes(shift.shift_start_time);
@@ -559,9 +976,9 @@ export default function DailySchedule() {
                                             const columnWidth = 100 / overlap.totalColumns;
                                             const columnLeft = overlap.column * columnWidth;
 
-                                            // Handle active dragging/resizing
                                             const isDragging = draggingShift?.shift.shift_id === shift.shift_id;
                                             const isResizing = resizing?.shift.shift_id === shift.shift_id;
+                                            const hasConflict = shift.shift_status === "⚠️ Conflicting Leave";
                                             
                                             let displayLeft = leftPercent;
                                             let displayWidth = widthPercent;
@@ -577,8 +994,12 @@ export default function DailySchedule() {
                                             return (
                                                 <div 
                                                     key={`client-${shift.shift_id}`} 
-                                                    className={`shift-block client-shift ${shift.is_leave ? 'leave-alert-border' : ''} ${isDragging || isResizing ? 'dragging' : ''}`}
-                                                    onMouseDown={(e) => handleShiftDragStart(e, shift)}
+                                                    className={`shift-block client-shift ${
+                                                        hasConflict ? 'conflict-shift' : ''
+                                                    } ${shift.is_leave ? 'leave-alert-border' : ''} ${
+                                                        isDragging || isResizing ? 'dragging' : ''
+                                                    }`}
+                                                    onMouseDown={(e) => !onLeave && !hasConflict && handleShiftDragStart(e, shift)}
                                                     onClick={(e) => handleShiftClick(e, shift)}
                                                     style={{ 
                                                         position: 'absolute',
@@ -586,45 +1007,89 @@ export default function DailySchedule() {
                                                         width: `calc(${displayWidth}% * ${1 / overlap.totalColumns})`,
                                                         top: '2px',
                                                         height: 'calc(100% - 4px)',
-                                                        zIndex: isDragging || isResizing ? 100 : 20,
-                                                        cursor: 'move',
-                                                        opacity: isDragging ? 0.7 : 1
+                                                        zIndex: isDragging || isResizing ? 100 : (hasConflict ? 150 : (onLeave ? 110 : 20)),
+                                                        cursor: onLeave ? 'pointer' : (hasConflict ? 'pointer' : 'move'),
+                                                        opacity: isDragging ? 0.7 : 1,
+                                                        background: hasConflict 
+                                                            ? 'repeating-linear-gradient(45deg, #ff6b6b, #ff6b6b 10px, #ff8787 10px, #ff8787 20px)'
+                                                            : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                                                        border: hasConflict ? '2px solid #c92a2a' : (onLeave ? '2px solid #ffc107' : 'none'),
+                                                        boxShadow: hasConflict 
+                                                            ? '0 0 0 3px rgba(201, 42, 42, 0.2), 0 4px 12px rgba(0,0,0,0.3)'
+                                                            : (onLeave ? '0 0 0 2px rgba(255, 193, 7, 0.3)' : '0 2px 4px rgba(0,0,0,0.1)'),
+                                                        animation: hasConflict ? 'pulse-warning 2s ease-in-out infinite' : 'none',
+                                                        pointerEvents: 'auto'
                                                     }}
                                                 >
-                                                    {/* Resize handles */}
-                                                    <div 
-                                                        className="resize-handle resize-left"
-                                                        onMouseDown={(e) => handleResizeStart(e, shift, 'start')}
-                                                        style={{
-                                                            position: 'absolute',
-                                                            left: 0,
-                                                            top: 0,
-                                                            bottom: 0,
-                                                            width: '6px',
-                                                            cursor: 'ew-resize',
-                                                            zIndex: 150
-                                                        }}
-                                                    />
-                                                    <div 
-                                                        className="resize-handle resize-right"
-                                                        onMouseDown={(e) => handleResizeStart(e, shift, 'end')}
-                                                        style={{
-                                                            position: 'absolute',
-                                                            right: 0,
-                                                            top: 0,
-                                                            bottom: 0,
-                                                            width: '6px',
-                                                            cursor: 'ew-resize',
-                                                            zIndex: 150
-                                                        }}
-                                                    />
+                                                    {hasConflict && (
+                                                        <div 
+                                                            className="position-absolute top-0 end-0"
+                                                            style={{
+                                                                background: '#c92a2a',
+                                                                color: 'white',
+                                                                borderRadius: '0 4px 0 8px',
+                                                                padding: '2px 6px',
+                                                                fontSize: '0.65rem',
+                                                                fontWeight: 'bold',
+                                                                zIndex: 10
+                                                            }}
+                                                        >
+                                                            <i className="bi bi-exclamation-triangle-fill me-1"></i>
+                                                            CONFLICT
+                                                        </div>
+                                                    )}
+
+                                                    {!hasConflict && !onLeave && (
+                                                        <>
+                                                            <div 
+                                                                className="resize-handle resize-left"
+                                                                onMouseDown={(e) => handleResizeStart(e, shift, 'start')}
+                                                                style={{
+                                                                    position: 'absolute',
+                                                                    left: 0,
+                                                                    top: 0,
+                                                                    bottom: 0,
+                                                                    width: '6px',
+                                                                    cursor: 'ew-resize',
+                                                                    zIndex: 150
+                                                                }}
+                                                            />
+                                                            <div 
+                                                                className="resize-handle resize-right"
+                                                                onMouseDown={(e) => handleResizeStart(e, shift, 'end')}
+                                                                style={{
+                                                                    position: 'absolute',
+                                                                    right: 0,
+                                                                    top: 0,
+                                                                    bottom: 0,
+                                                                    width: '6px',
+                                                                    cursor: 'ew-resize',
+                                                                    zIndex: 150
+                                                                }}
+                                                            />
+                                                        </>
+                                                    )}
                                                     
-                                                    <div className="shift-block-content">
+                                                    <div className="shift-block-content" style={{ 
+                                                        marginTop: hasConflict ? '20px' : '0'
+                                                    }}>
                                                         <div className="shift-time-range">
                                                             {formatTimeDisplay(shift.shift_start_time)} - {formatTimeDisplay(shift.shift_end_time)}
                                                         </div>
                                                         <div className="shift-client-info">
-                                                            <i className="bi bi-person"></i> {client?.first_name || 'Client'} {shift.is_leave ? '⚠️' : ''}
+                                                            <i className="bi bi-person"></i> {client?.first_name || 'Client'}
+                                                            {hasConflict && (
+                                                                <div className="small mt-1" style={{ opacity: 0.9 }}>
+                                                                    <i className="bi bi-arrow-right me-1"></i>
+                                                                    Click to reassign
+                                                                </div>
+                                                            )}
+                                                            {onLeave && !hasConflict && (
+                                                                <div className="small mt-1" style={{ opacity: 0.9 }}>
+                                                                    <i className="bi bi-arrow-repeat me-1"></i>
+                                                                    Click to reschedule
+                                                                </div>
+                                                            )}
                                                         </div>
                                                     </div>
                                                 </div>
@@ -632,7 +1097,7 @@ export default function DailySchedule() {
                                         })}
 
                                         {/* Drag-to-create preview */}
-                                        {dragCreate?.empId === employee.emp_id && dragCreate.isCreating && (
+                                        {dragCreate?.empId === employee.emp_id && dragCreate.isCreating && !onLeave && (
                                             <div 
                                                 className="shift-block client-shift"
                                                 style={{
@@ -662,6 +1127,7 @@ export default function DailySchedule() {
                 </div>
             </div>
 
+            {/* Regular Shift Edit Modal */}
             <ShiftEditModal 
                 isOpen={showShiftModal} 
                 onClose={() => setShowShiftModal(false)} 
@@ -672,6 +1138,316 @@ export default function DailySchedule() {
                 clients={scheduleData.client}
                 allShifts={scheduleData.shift}
             />
+
+            {/* RESCHEDULE MODAL */}
+            {showRescheduleModal && selectedEmployeeForReschedule && (
+                <div 
+                    className="modal show d-block" 
+                    style={{ backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 10000 }}
+                    onClick={() => setShowRescheduleModal(false)}
+                >
+                    <div 
+                        className="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="modal-content shadow-lg border-warning" style={{ borderWidth: '3px' }}>
+                            <div className="modal-header bg-warning bg-opacity-10">
+                                <div>
+                                    <h5 className="modal-title fw-bold">
+                                        <i className="bi bi-calendar-x me-2"></i>
+                                        Reschedule Shifts - {selectedEmployeeForReschedule.first_name} {selectedEmployeeForReschedule.last_name}
+                                    </h5>
+                                    <div className="text-muted small mt-1">
+                                        Employee is on leave - these shifts need to be reassigned
+                                    </div>
+                                </div>
+                                <button 
+                                    type="button" 
+                                    className="btn-close" 
+                                    onClick={() => setShowRescheduleModal(false)}
+                                ></button>
+                            </div>
+                            
+                            <div className="modal-body">
+                                {shiftsToReschedule.length === 0 ? (
+                                    <div className="alert alert-info">
+                                        <i className="bi bi-check-circle me-2"></i>
+                                        All shifts have been rescheduled!
+                                    </div>
+                                ) : (
+                                    <div className="list-group">
+                                        {shiftsToReschedule.map((shift) => {
+                                            const client = getClient(shift.client_id);
+                                            return (
+                                                <div 
+                                                    key={shift.shift_id}
+                                                    className="list-group-item"
+                                                >
+                                                    <div className="d-flex justify-content-between align-items-start">
+                                                        <div className="flex-grow-1">
+                                                            <h6 className="mb-2">
+                                                                <i className="bi bi-person me-2"></i>
+                                                                {client?.first_name || 'Client'} {client?.last_name || ''}
+                                                            </h6>
+                                                            <div className="small text-muted">
+                                                                <i className="bi bi-clock me-1"></i>
+                                                                {formatTimeDisplay(shift.shift_start_time)} - {formatTimeDisplay(shift.shift_end_time)}
+                                                            </div>
+                                                            <div className="small text-muted">
+                                                                <i className="bi bi-calendar me-1"></i>
+                                                                {new Date(shift.date).toLocaleDateString('en-US', { 
+                                                                    weekday: 'long',
+                                                                    month: 'long',
+                                                                    day: 'numeric'
+                                                                })}
+                                                            </div>
+                                                        </div>
+                                                        
+                                                        <button 
+                                                            className="btn btn-sm btn-primary"
+                                                            onClick={() => rescheduleShift(shift.shift_id)}
+                                                        >
+                                                            <i className="bi bi-arrow-repeat me-1"></i>
+                                                            Reschedule
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+                            
+                            <div className="modal-footer bg-light">
+                                <button 
+                                    className="btn btn-secondary"
+                                    onClick={() => setShowRescheduleModal(false)}
+                                >
+                                    Close
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* CONFLICT RESOLUTION MODAL */}
+            {showConflictModal && selectedConflict && (
+                <div 
+                    className="modal show d-block" 
+                    style={{ backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 10000 }}
+                    onClick={() => !conflictProcessing && setShowConflictModal(false)}
+                >
+                    <div 
+                        className="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="modal-content shadow-lg border-warning" style={{ borderWidth: '3px' }}>
+                            <div className="modal-header bg-warning bg-opacity-10">
+                                <div>
+                                    <h5 className="modal-title fw-bold">
+                                        <i className="bi bi-exclamation-triangle-fill text-warning me-2"></i>
+                                        Shift Conflict - Reassignment Needed
+                                    </h5>
+                                    <div className="text-muted small mt-1">
+                                        AI-ranked recommendations based on availability, seniority & type
+                                    </div>
+                                </div>
+                                <button 
+                                    type="button" 
+                                    className="btn-close" 
+                                    onClick={() => setShowConflictModal(false)}
+                                    disabled={conflictProcessing}
+                                ></button>
+                            </div>
+                            
+                            <div className="modal-body">
+                                {/* Shift Info Card */}
+                                <div className="card mb-4 border-0 bg-light">
+                                    <div className="card-body">
+                                        <div className="row">
+                                            <div className="col-md-6 mb-3 mb-md-0">
+                                                <div className="small text-muted mb-1">Date & Time</div>
+                                                <div className="fw-bold">
+                                                    {new Date(selectedConflict.date).toLocaleDateString('en-US', { 
+                                                        weekday: 'long',
+                                                        month: 'long',
+                                                        day: 'numeric'
+                                                    })}
+                                                </div>
+                                                <div className="text-muted">
+                                                    {formatTimeDisplay(selectedConflict.start_time)} - {formatTimeDisplay(selectedConflict.end_time)}
+                                                </div>
+                                            </div>
+                                            <div className="col-md-6">
+                                                <div className="small text-muted mb-1">Client</div>
+                                                <div className="fw-bold">
+                                                    {selectedConflict.client?.name || 
+                                                     `${selectedConflict.client?.first_name} ${selectedConflict.client?.last_name}` ||
+                                                     'Unknown Client'}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Recommendations */}
+                                {recommendations.length === 0 ? (
+                                    <div className="alert alert-warning">
+                                        <i className="bi bi-exclamation-triangle me-2"></i>
+                                        No suitable employees found. Manual assignment required.
+                                    </div>
+                                ) : (
+                                    <div className="list-group">
+                                        {recommendations.map((rec, index) => (
+                                            <div 
+                                                key={rec.recommendation_id}
+                                                className="list-group-item list-group-item-action"
+                                                style={{ 
+                                                    cursor: 'pointer',
+                                                    borderLeft: index === 0 ? '4px solid #28a745' : 
+                                                               index === 1 ? '4px solid #ffc107' : 
+                                                               '4px solid #6c757d'
+                                                }}
+                                                onClick={() => !conflictProcessing && approveReassignment(rec.employee.emp_id)}
+                                            >
+                                                <div className="d-flex justify-content-between align-items-start">
+                                                    <div className="flex-grow-1">
+                                                        <div className="d-flex align-items-center mb-2">
+                                                            <h6 className="mb-0 fw-bold">
+                                                                {index === 0 && (
+                                                                    <i className="bi bi-star-fill text-warning me-2"></i>
+                                                                )}
+                                                                {rec.employee.name}
+                                                            </h6>
+                                                            <span 
+                                                                className={`badge ms-2 ${
+                                                                    index === 0 ? 'bg-success' :
+                                                                    index === 1 ? 'bg-warning text-dark' :
+                                                                    'bg-secondary'
+                                                                }`}
+                                                            >
+                                                                Rank #{rec.rank}
+                                                            </span>
+                                                        </div>
+                                                        
+                                                        <div className="small text-muted mb-2">
+                                                            <i className="bi bi-briefcase me-1"></i>
+                                                            {rec.employee.employee_type}
+                                                            <span className="mx-2">•</span>
+                                                            <i className="bi bi-geo-alt me-1"></i>
+                                                            {rec.employee.service_type}
+                                                            <span className="mx-2">•</span>
+                                                            <i className="bi bi-award me-1"></i>
+                                                            Seniority: {rec.employee.seniority}
+                                                        </div>
+                                                        
+                                                        <div className="small">
+                                                            <i className="bi bi-clock-history me-1"></i>
+                                                            {rec.reason}
+                                                        </div>
+                                                        
+                                                        <div className="mt-2">
+                                                            <div className="progress" style={{ height: '6px' }}>
+                                                                <div 
+                                                                    className={`progress-bar ${
+                                                                        rec.score >= 70 ? 'bg-success' :
+                                                                        rec.score >= 50 ? 'bg-warning' :
+                                                                        'bg-secondary'
+                                                                    }`}
+                                                                    style={{ width: `${rec.score}%` }}
+                                                                ></div>
+                                                            </div>
+                                                            <div className="small text-muted mt-1">
+                                                                Match Score: {rec.score}/100
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    <button 
+                                                        className={`btn btn-sm ms-3 ${
+                                                            index === 0 ? 'btn-success' : 'btn-outline-success'
+                                                        }`}
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            approveReassignment(rec.employee.emp_id);
+                                                        }}
+                                                        disabled={conflictProcessing}
+                                                    >
+                                                        {conflictProcessing ? (
+                                                            <span className="spinner-border spinner-border-sm"></span>
+                                                        ) : (
+                                                            <>
+                                                                <i className="bi bi-check-circle me-1"></i>
+                                                                Approve
+                                                            </>
+                                                        )}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                            
+                            <div className="modal-footer bg-light">
+                                <button 
+                                    className="btn btn-outline-secondary"
+                                    onClick={() => setShowConflictModal(false)}
+                                    disabled={conflictProcessing}
+                                >
+                                    <i className="bi bi-x-circle me-1"></i>
+                                    Cancel
+                                </button>
+                                <button 
+                                    className="btn btn-outline-danger"
+                                    onClick={rejectAllRecommendations}
+                                    disabled={conflictProcessing}
+                                >
+                                    <i className="bi bi-trash me-1"></i>
+                                    Reject & Assign Manually
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Add pulse animation CSS */}
+            <style>{`
+                @keyframes pulse-warning {
+                    0%, 100% {
+                        box-shadow: 0 0 0 3px rgba(201, 42, 42, 0.2), 0 4px 12px rgba(0,0,0,0.3);
+                    }
+                    50% {
+                        box-shadow: 0 0 0 6px rgba(201, 42, 42, 0.4), 0 6px 16px rgba(0,0,0,0.4);
+                    }
+                }
+
+                .conflict-shift {
+                    position: relative;
+                    overflow: visible !important;
+                }
+
+                .conflict-shift:hover {
+                    transform: scale(1.02);
+                    z-index: 999 !important;
+                }
+
+                .conflict-shift .shift-block-content {
+                    color: white !important;
+                    font-weight: 600;
+                    text-shadow: 0 1px 3px rgba(0,0,0,0.3);
+                }
+
+                .employee-on-leave .employee-time-slots {
+                    position: relative;
+                }
+
+                .employee-on-leave .shift-block {
+                    filter: grayscale(0.3);
+                }
+            `}</style>
         </div>
     );
 }

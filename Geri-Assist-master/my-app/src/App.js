@@ -30,6 +30,8 @@ import DailySchedule from './components/DailySchedule';
 import ShiftOffers from './components/ShiftOffers';
 import AdminDashboard from './components/adminDashboard';
 import AdminSchedule from './components/AdminSchedule';
+import FLWSchedule from './components/flw-schedule'; // New component for FLW employees
+import FLWLeaveRequest from './components/FLWLeaveRequest'; // New leave request component
 
 import '../node_modules/bootstrap/dist/css/bootstrap.min.css';
 
@@ -106,23 +108,37 @@ function ProtectedRoute({ children, supervisorOnly = false, adminOnly = false })
 
 function AppContent() {
   const location = useLocation();
+  const { isAuthenticated } = useAuth();
+
+  // Pages where sidebar and navbar should NOT be shown
+  const publicPages = ['/login', '/register', '/logout'];
+  const isPublicPage = publicPages.includes(location.pathname);
+
+  // Determine if we should show the sidebar and navbar
+  const showSidebarAndNavbar = isAuthenticated && !isPublicPage;
 
   return (
     <div className="App" style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-      <Navbar />
+      {/* Only show Navbar when authenticated and not on public pages */}
+      {showSidebarAndNavbar && <Navbar />}
 
       <div className="d-flex flex-grow-1" style={{ overflow: 'hidden' }}>
-        <div style={{ width: 250, flexShrink: 0 }}>
-          <Sidebar />
-        </div>
+        {/* Only show Sidebar when authenticated and not on public pages */}
+        {showSidebarAndNavbar && (
+          <div style={{ width: 250, flexShrink: 0 }}>
+            <Sidebar />
+          </div>
+        )}
 
         <div className="flex-grow-1 d-flex flex-column" style={{ overflow: 'hidden' }}>
           <div style={{ flex: 1, overflowY: 'auto' }}>
             <Routes location={location}>
+              {/* Public Routes */}
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
               <Route path="/logout" element={<Logout />} />
 
+              {/* Protected Routes */}
               <Route
                 path="/"
                 element={
@@ -135,7 +151,7 @@ function AppContent() {
               <Route
                 path="/client"
                 element={
-                  <ProtectedRoute>
+                  <ProtectedRoute supervisorOnly>
                     <ClientDetailsPage key={location.key} />
                   </ProtectedRoute>
                 }
@@ -218,7 +234,7 @@ function AppContent() {
               <Route
                 path="/shift-offers"
                 element={
-                  <ProtectedRoute>
+                  <ProtectedRoute supervisorOnly>
                     <ShiftOffers key={location.key} />
                   </ProtectedRoute>
                 }
@@ -241,25 +257,47 @@ function AppContent() {
                   </ProtectedRoute>
                 }
               />
+
+              {/* FLW Schedule Route - Available to all authenticated users */}
               <Route
-                  path="/admin/dashboard"
-                  element={
-                    <ProtectedRoute supervisorOnly>
-                      <AdminDashboard />
-                    </ProtectedRoute>
-                  }
-                />
+                path="/flw-schedule"
+                element={
+                  <ProtectedRoute>
+                    <FLWSchedule key={location.key} />
+                  </ProtectedRoute>
+                }
+              />
 
-                <Route
-                  path="/admin/schedule"
-                  element={
-                    <ProtectedRoute supervisorOnly>
-                      <AdminSchedule />
-                    </ProtectedRoute>
-                  }
-                />
+              {/* FLW Leave Request Route - Available to all authenticated users */}
+              <Route
+                path="/flw-leave-request"
+                element={
+                  <ProtectedRoute>
+                    <FLWLeaveRequest key={location.key} />
+                  </ProtectedRoute>
+                }
+              />
 
+              {/* Admin Routes */}
+              <Route
+                path="/admin/dashboard"
+                element={
+                  <ProtectedRoute supervisorOnly>
+                    <AdminDashboard />
+                  </ProtectedRoute>
+                }
+              />
 
+              <Route
+                path="/admin/schedule"
+                element={
+                  <ProtectedRoute supervisorOnly>
+                    <AdminSchedule />
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* Catch all - redirect to login */}
               <Route path="*" element={<Navigate to="/login" replace />} />
             </Routes>
           </div>
