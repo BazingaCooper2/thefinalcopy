@@ -2891,7 +2891,7 @@ def add_unavailability():
 def leave_processing(emp_id, leave_start_date, leave_end_date, leave_start_time, leave_end_time, employee_location=None):
     """
     Process leave application and CREATE RECOMMENDATIONS for conflicting shifts.
-    Does NOT auto-assign - creates records for supervisor review.
+    Does NOT auto-assign - marks shifts with ⚠️ and creates records for supervisor review.
     """
     
     def to_hhmm(t):
@@ -2914,6 +2914,7 @@ def leave_processing(emp_id, leave_start_date, leave_end_date, leave_start_time,
         """Check if shift overlaps with leave period"""
         shift_date_str = to_date(shift_date)
         
+        # Check if the shift date falls within the leave date range
         if not (leave_start_date <= shift_date_str <= leave_end_date):
             return False
         
@@ -2922,16 +2923,17 @@ def leave_processing(emp_id, leave_start_date, leave_end_date, leave_start_time,
         l_start = to_hhmm(leave_start)
         l_end = to_hhmm(leave_end)
         
+        # Standard overlap logic: Start of A < End of B AND End of A > Start of B
         return not (s_end <= l_start or s_start >= l_end)
 
-    # 1️⃣ Fetch all assigned shifts for this employee
+    # 1️⃣ Fetch all assigned shifts for this employee that are currently scheduled
     assigned_shifts = supabase.table("shift") \
         .select("*") \
         .eq("emp_id", emp_id) \
         .eq("shift_status", "Scheduled") \
         .execute().data
 
-    # 2️⃣ Find affected shifts
+    # 2️⃣ Find affected shifts and flag them
     affected_shifts = []
     for shift in assigned_shifts:
         if overlaps(
@@ -2943,19 +2945,24 @@ def leave_processing(emp_id, leave_start_date, leave_end_date, leave_start_time,
             leave_start_date,
             leave_end_date
         ):
-            # Mark shift with warning
+            # --- CLEANUP: Delete old pending recommendations for this specific shift ---
+            supabase.table("shift_reassignment_recommendations") \
+                .delete() \
+                .eq("shift_id", shift["shift_id"]) \
+                .eq("status", "pending") \
+                .execute()
+
+            # --- FLAG: Mark shift with the exact string your Frontend (DailySchedule.js) looks for ---
             supabase.table("shift").update({
-                "shift_status": "⚠️ Conflicting Leave"  # Visual indicator
+                "shift_status": "⚠️ Conflicting Leave"
             }).eq("shift_id", shift["shift_id"]).execute()
             
             affected_shifts.append(shift)
-            
-            print(f"[LEAVE CONFLICT] Shift {shift['shift_id']} marked for review")
+            print(f"[LEAVE CONFLICT] Shift {shift['shift_id']} flagged for reassignment")
 
-    # 3️⃣ Generate recommendations for each affected shift
+    # 3️⃣ Generate new recommendations for each affected shift
     if affected_shifts:
-        print(f"[GENERATING RECOMMENDATIONS] Processing {len(affected_shifts)} conflicts")
-        
+        print(f"[AI RANKING] Generating substitute options for {len(affected_shifts)} shifts")
         for shift in affected_shifts:
             generate_reassignment_recommendations(shift, emp_id)
 
