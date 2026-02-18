@@ -1078,13 +1078,46 @@ export default function DailySchedule() {
                                                         </div>
                                                         <div className="shift-client-info">
                                                             <i className="bi bi-person"></i> {client?.first_name || 'Client'}
+                                                            
+                                                            {/* --- ACTION BUTTONS FOR RED CONFLICT SHIFTS --- */}
                                                             {hasConflict && (
-                                                                <div className="small mt-1" style={{ opacity: 0.9 }}>
-                                                                    <i className="bi bi-arrow-right me-1"></i>
-                                                                    Click to reassign
+                                                                <div className="d-flex gap-1 mt-2 justify-content-center">
+                                                                    <button 
+                                                                        className="btn btn-dark btn-sm p-0 px-2 shadow-sm" 
+                                                                        style={{ 
+                                                                            fontSize: '0.65rem', 
+                                                                            height: '20px', 
+                                                                            border: '1px solid rgba(255,255,255,0.4)',
+                                                                            fontWeight: '700',
+                                                                            zIndex: 200 
+                                                                        }}
+                                                                        onClick={(e) => { 
+                                                                            e.stopPropagation(); 
+                                                                            openConflictResolution(shift.shift_id); 
+                                                                        }}
+                                                                    >
+                                                                        TRANSFER
+                                                                    </button>
+                                                                    <button 
+                                                                        className="btn btn-light btn-sm p-0 px-2 shadow-sm" 
+                                                                        style={{ 
+                                                                            fontSize: '0.65rem', 
+                                                                            height: '20px',
+                                                                            fontWeight: '700',
+                                                                            zIndex: 200
+                                                                        }}
+                                                                        onClick={(e) => { 
+                                                                            e.stopPropagation(); 
+                                                                            handleShiftClick(e, shift); 
+                                                                        }}
+                                                                    >
+                                                                        EDIT
+                                                                    </button>
                                                                 </div>
                                                             )}
-                                                            {onLeave && !hasConflict && (
+
+                                                            {/* Fallback for regular leave rows that aren't specific conflicts yet */}
+                                                            {!hasConflict && onLeave && (
                                                                 <div className="small mt-1" style={{ opacity: 0.9 }}>
                                                                     <i className="bi bi-arrow-repeat me-1"></i>
                                                                     Click to reschedule
