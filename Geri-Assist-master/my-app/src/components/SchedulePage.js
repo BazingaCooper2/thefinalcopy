@@ -3,7 +3,7 @@ import axios from 'axios';
 import API_URL from '../config/api';
 
 export default function SchedulePage() {
-  const [scheduleData, setScheduleData] = useState({ shift: [], daily_shift: [], client: [], employee: [] });
+  const [scheduleData, setScheduleData] = useState({ shift: [], daily_shift: [], client: [], employee: [], leaves: [] });
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedShift, setSelectedShift] = useState(null);
@@ -83,30 +83,46 @@ export default function SchedulePage() {
     return false;
   };
 
+  // ========== LEAVE HELPERS ==========
+  const isEmployeeOnLeave = (empId, date) => {
+    const dateStr = typeof date === 'string' ? date : date.toISOString().split('T')[0];
+    return (scheduleData.leaves || []).some(lv =>
+      lv.emp_id === empId &&
+      lv.leave_start_date <= dateStr && dateStr <= lv.leave_end_date
+    );
+  };
+
+  const getEmployeeLeaveInfo = (empId, date) => {
+    const dateStr = typeof date === 'string' ? date : date.toISOString().split('T')[0];
+    return (scheduleData.leaves || []).find(lv =>
+      lv.emp_id === empId &&
+      lv.leave_start_date <= dateStr && dateStr <= lv.leave_end_date
+    ) || null;
+  };
+
   // ========== DATA FETCHING ==========
   useEffect(() => {
     fetchScheduleData();
-  }, [selectedLocation]);
+  }, [selectedLocation, currentDate]);
 
   const fetchScheduleData = async () => {
     try {
       setLoading(true);
-      const response = await axios.get(`${API_URL}/scheduled`, {
-        params: { service: selectedLocation }
-      });
+      const params = {
+        date: currentDate.toISOString().split('T')[0],
+        ...(selectedLocation !== 'All Locations' ? { service: selectedLocation } : {})
+      };
+      const response = await axios.get(`${API_URL}/scheduled`, { params });
 
-      // Store FULL response with all data
-      setScheduleData(response.data || { shift: [], daily_shift: [], client: [], employee: [] });
+      setScheduleData(response.data || { shift: [], daily_shift: [], client: [], employee: [], leaves: [] });
 
-      // Filter employees by location eligibility
       const filteredEmployees = (response.data.employee || []).filter(emp =>
         isEmployeeEligible(emp, selectedLocation)
       );
       setEmployees(filteredEmployees);
-      
-      setLoading(false);
     } catch (error) {
       console.error('Error fetching schedule:', error);
+    } finally {
       setLoading(false);
     }
   };
@@ -154,6 +170,24 @@ export default function SchedulePage() {
       </div>
     );
   }
+
+  const CapacityChip = ({ employee }) => {
+    if (!employee.capacity) return null;
+    const cap = employee.capacity;
+    const color = cap.is_over_daily ? '#ef4444' : cap.is_ot ? '#f59e0b' : '#22c55e';
+    const label = cap.is_over_daily ? '⚠ Over cap'
+                : cap.is_ot        ? 'OT this wk'
+                : `${cap.daily_remain.toFixed(1)}h left`;
+    return (
+      <span style={{
+        fontSize: '0.65rem', fontWeight: 600, color,
+        background: color + '18', borderRadius: 4,
+        padding: '1px 5px', marginTop: 2, display: 'inline-block'
+      }}>
+        {label}
+      </span>
+    );
+  };
 
   return (
     <div className="container-fluid p-4 animate-fadeIn" style={{ background: '#ffffff', minHeight: '100vh' }}>
@@ -279,6 +313,14 @@ export default function SchedulePage() {
                       <div className="text-muted small">
                         {emp.department || emp.service_type || 'Staff'}
                       </div>
+                      <CapacityChip employee={emp} />
+                      {isEmployeeOnLeave(emp.emp_id, days[0]) && (
+                        <div className="mt-1">
+                          <span className="badge bg-danger" style={{ fontSize: '0.65rem' }}>
+                            <i className="bi bi-calendar-x me-1"></i>On Leave
+                          </span>
+                        </div>
+                      )}
                     </td>
                     {days.map((day, i) => {
                       const shift = getShiftForDay(emp.emp_id, day);
@@ -292,8 +334,10 @@ export default function SchedulePage() {
                           key={i} 
                           className="p-2 border-end border-bottom text-center align-middle" 
                           style={{ 
-                            height: '80px',
-                            backgroundColor: isToday ? '#fef3c7' : '#fff7ed',
+                            height: 80,
+                            backgroundColor: isToday ? '#fef3c7' 
+                              : isEmployeeOnLeave(emp.emp_id, day) ? '#fee2e2'
+                              : '#fff7ed',
                             cursor: hasShift ? 'pointer' : 'default'
                           }}
                           onClick={() => {
@@ -303,7 +347,18 @@ export default function SchedulePage() {
                             }
                           }}
                         >
-                          {hasShift ? (
+                          {isEmployeeOnLeave(emp.emp_id, day) && !hasShift ? (
+                            <div style={{
+                              background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                              color: 'white', padding: '6px 4px', borderRadius: 6,
+                              fontSize: '0.65rem', textAlign: 'center'
+                            }}>
+                              <i className="bi bi-calendar-x"></i>
+                              <div style={{ marginTop: 2 }}>
+                                {getEmployeeLeaveInfo(emp.emp_id, day)?.leave_type || 'On Leave'}
+                              </div>
+                            </div>
+                          ) : hasShift ? (
                             <div
                               className={`shift-cell ${startingSoon ? 'pulse-animation' : ''}`}
                               style={{
@@ -508,7 +563,7 @@ function RosterListView({ days, scheduleData, employees, selectedLocation, onShi
                             </span>
                             {s.is_leave && (
                               <span className="badge bg-danger ms-2" style={{ fontSize: '0.65rem' }}>
-                                On Leave
+                                ⚠ Leave Conflict
                               </span>
                             )}
                           </td>
@@ -516,9 +571,19 @@ function RosterListView({ days, scheduleData, employees, selectedLocation, onShi
                           {/* Employee */}
                           <td>
                             {emp ? (
-                              <span className="small fw-bold">
-                                {emp.first_name} {emp.last_name}
-                              </span>
+                              <div>
+                                <span className="small fw-bold">
+                                  {emp.first_name} {emp.last_name}
+                                </span>
+                                {emp.capacity && (
+                                  <div style={{
+                                    fontSize: '0.65rem',
+                                    color: emp.capacity.is_over_daily ? '#ef4444' : emp.capacity.is_ot ? '#f59e0b' : '#6b7280'
+                                  }}>
+                                    {emp.capacity.daily_used.toFixed(1)}h / {emp.capacity.daily_cap}h today
+                                  </div>
+                                )}
+                              </div>
                             ) : (
                               <span className="small text-danger">Unassigned</span>
                             )}

@@ -14,7 +14,7 @@ import ShiftEditModal from './ShiftEditModal';
  */
 export default function DailySchedule() {
     const [currentDate, setCurrentDate] = useState(new Date());
-    const [scheduleData, setScheduleData] = useState({ shift: [], daily_shift: [], client: [], employee: [] });
+    const [scheduleData, setScheduleData] = useState({ shift: [], daily_shift: [], client: [], employee: [], leaves: [] });
     const [loading, setLoading] = useState(false);
     const [selectedLocation, setSelectedLocation] = useState('All Locations');
     const [showShiftModal, setShowShiftModal] = useState(false);
@@ -31,7 +31,6 @@ export default function DailySchedule() {
     const [conflictProcessing, setConflictProcessing] = useState(false);
     
     // NEW: Leave tracking states
-    const [leaves, setLeaves] = useState([]);
     const [showRescheduleModal, setShowRescheduleModal] = useState(false);
     const [selectedEmployeeForReschedule, setSelectedEmployeeForReschedule] = useState(null);
     const [shiftsToReschedule, setShiftsToReschedule] = useState([]);
@@ -46,84 +45,25 @@ export default function DailySchedule() {
     }));
 
     // ========== CHECK IF EMPLOYEE IS ON LEAVE ==========
+    // ========== CHECK IF EMPLOYEE IS ON LEAVE ==========
     const isEmployeeOnLeave = useCallback((empId, date) => {
         const dateStr = typeof date === 'string' ? date : date.toISOString().split('T')[0];
-        
-        return leaves.some(leave => {
-            if (leave.emp_id !== empId) return false;
-            
-            const leaveStart = new Date(leave.leave_start_date);
-            const leaveEnd = new Date(leave.leave_end_date);
-            const checkDate = new Date(dateStr);
-            
-            return checkDate >= leaveStart && checkDate <= leaveEnd;
-        });
-    }, [leaves]);
+        return (scheduleData.leaves || []).some(lv =>
+            lv.emp_id === empId &&
+            lv.leave_start_date <= dateStr && dateStr <= lv.leave_end_date
+        );
+    }, [scheduleData.leaves]);
 
     // ========== GET EMPLOYEE LEAVE INFO ==========
     const getEmployeeLeaveInfo = useCallback((empId, date) => {
         const dateStr = typeof date === 'string' ? date : date.toISOString().split('T')[0];
-        
-        const leave = leaves.find(l => {
-            if (l.emp_id !== empId) return false;
-            
-            const leaveStart = new Date(l.leave_start_date);
-            const leaveEnd = new Date(l.leave_end_date);
-            const checkDate = new Date(dateStr);
-            
-            return checkDate >= leaveStart && checkDate <= leaveEnd;
-        });
-        
-        return leave;
-    }, [leaves]);
+        return (scheduleData.leaves || []).find(lv =>
+            lv.emp_id === empId &&
+            lv.leave_start_date <= dateStr && dateStr <= lv.leave_end_date
+        ) || null;
+    }, [scheduleData.leaves]);
 
     // ========== FETCH LEAVES ==========
-    const fetchLeaves = useCallback(async () => {
-        try {
-            // Get all employee IDs from the schedule
-            const employeeIds = scheduleData.employee.map(e => e.emp_id);
-            
-            if (employeeIds.length === 0) return;
-            
-            // Fetch leaves for all employees
-            const leavePromises = employeeIds.map(empId => 
-                axios.get(`${API_URL}/unavailability/${empId}`)
-                    .then(res => res.data?.unavailability || [])
-                    .catch(err => {
-                        console.error(`Error fetching leaves for employee ${empId}:`, err);
-                        return [];
-                    })
-            );
-            
-            const allLeavesArrays = await Promise.all(leavePromises);
-            const allLeaves = allLeavesArrays.flat();
-            
-            // Filter to get current and upcoming leaves
-            const today = new Date(currentDate.toISOString().split('T')[0]);
-            const relevantLeaves = allLeaves.filter(leave => {
-                const leaveEnd = new Date(leave.leave_end_date);
-                // Include leaves that haven't ended yet
-                return leaveEnd >= today;
-            });
-            
-            setLeaves(relevantLeaves);
-        } catch (error) {
-            console.error('Error fetching leaves:', error);
-            // Fallback: try getting from schedule data
-            if (scheduleData.shift) {
-                const uniqueLeaves = scheduleData.shift
-                    .filter(s => s.is_leave)
-                    .map(s => ({
-                        emp_id: s.emp_id,
-                        leave_start_date: s.date,
-                        leave_end_date: s.date,
-                        leave_type: s.leave_reason || 'Leave',
-                        leave_reason: s.leave_reason
-                    }));
-                setLeaves(uniqueLeaves);
-            }
-        }
-    }, [currentDate, scheduleData.employee, scheduleData.shift]);
 
     // ========== OPEN RESCHEDULE MODAL ==========
     const openRescheduleModal = (empId) => {
@@ -250,15 +190,18 @@ export default function DailySchedule() {
         if (!empId) return;
         try {
             setLoading(true);
-            const params = selectedLocation !== 'All Locations' ? { service: selectedLocation } : {};
+            const params = {
+                date: currentDate.toISOString().split('T')[0],
+                ...(selectedLocation !== 'All Locations' ? { service: selectedLocation } : {})
+            };
             const response = await axios.get(`${API_URL}/scheduled`, { params });
             setScheduleData(response.data);
-            setLoading(false);
         } catch (error) {
             console.error('Error fetching schedule:', error);
+        } finally {
             setLoading(false);
         }
-    }, [selectedLocation]);
+    }, [selectedLocation, currentDate]);
 
     useEffect(() => {
         fetchScheduleData();
@@ -266,25 +209,14 @@ export default function DailySchedule() {
     }, [currentDate, fetchScheduleData, fetchConflicts]);
 
     // Separate effect for leaves - runs after schedule data is loaded
-    useEffect(() => {
-        if (scheduleData.employee.length > 0) {
-            fetchLeaves();
-        }
-    }, [scheduleData.employee, fetchLeaves]);
-
-    // Auto-refresh
+    // Auto-refresh every 30s
     useEffect(() => {
         const interval = setInterval(() => {
             fetchScheduleData();
             fetchConflicts();
-            if (scheduleData.employee.length > 0) {
-                fetchLeaves();
-            }
         }, 30000);
-        
         return () => clearInterval(interval);
-    }, [fetchScheduleData, fetchConflicts, fetchLeaves, scheduleData.employee]);
-
+    }, [fetchScheduleData, fetchConflicts]);
     // ========== TIME CONVERSION HELPERS ==========
     const parseTimeToMinutes = (timeStr) => {
         const timePart = timeStr?.split(/[T ]/)[1] || "00:00:00";
@@ -747,8 +679,20 @@ export default function DailySchedule() {
 
             <div className="schedule-top-bar">
                 <div className="top-bar-left">
+                    <button 
+                        className="btn btn-outline-secondary btn-sm rounded-circle me-1"
+                        onClick={() => setCurrentDate(d => { const n = new Date(d); n.setDate(n.getDate() - 1); return n; })}
+                    >
+                        <i className="bi bi-chevron-left"></i>
+                    </button>
                     <button className="today-btn-small" onClick={() => setCurrentDate(new Date())}>Today</button>
-                    <button className="btn btn-sm btn-primary ms-2" onClick={() => {
+                    <button 
+                        className="btn btn-outline-secondary btn-sm rounded-circle ms-1"
+                        onClick={() => setCurrentDate(d => { const n = new Date(d); n.setDate(n.getDate() + 1); return n; })}
+                    >
+                        <i className="bi bi-chevron-right"></i>
+                    </button>
+                <button className="btn btn-sm btn-primary ms-2" onClick={() => {
                         const dateStr = currentDate.toISOString().split('T')[0];
                         setSelectedShift({
                             isNew: true,
@@ -820,6 +764,36 @@ export default function DailySchedule() {
                                                 <div className="employee-role" style={{ fontSize: '0.75rem', color: '#666' }}>
                                                     {employee.service_type || 'Staff'}
                                                 </div>
+
+                                                {/* ── Capacity bars (hidden when on leave) ── */}
+                                                {employee.capacity && !onLeave && (() => {
+                                                    const cap = employee.capacity;
+                                                    const dailyColor  = cap.is_over_daily  ? '#ef4444' : cap.daily_pct  >= 80 ? '#f59e0b' : '#22c55e';
+                                                    const weeklyColor = cap.is_over_weekly ? '#ef4444' : cap.is_ot      ? '#f59e0b' : '#22c55e';
+                                                    const bar = (used, total, color) => (
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.67rem', color: '#555' }}>
+                                                            <span style={{ width: 24, textAlign: 'right', fontWeight: 600 }}>{used.toFixed(1)}</span>
+                                                            <div style={{ flex: 1, height: 4, background: '#e5e7eb', borderRadius: 2, minWidth: 36 }}>
+                                                                <div style={{ width: `${Math.min(used / total * 100, 100)}%`, height: '100%', background: color, borderRadius: 2, transition: 'width .3s' }} />
+                                                            </div>
+                                                            <span style={{ width: 20 }}>{total}h</span>
+                                                        </div>
+                                                    );
+                                                    return (
+                                                        <div style={{ marginTop: 3 }}>
+                                                            {bar(cap.daily_used,  cap.daily_cap,  dailyColor)}
+                                                            {bar(cap.weekly_used, cap.weekly_cap, weeklyColor)}
+                                                            <div style={{ fontSize: '0.63rem', marginTop: 2,
+                                                                color: cap.is_over_daily ? '#dc2626' : cap.is_ot ? '#d97706' : '#15803d',
+                                                                fontWeight: cap.is_over_daily || cap.is_ot ? 700 : 400 }}>
+                                                                {cap.is_over_daily  ? '⚠ Over daily cap'
+                                                                : cap.is_ot         ? 'OT this week'
+                                                                : `${cap.daily_remain.toFixed(1)}h today · ${cap.weekly_remain.toFixed(1)}h wk`}
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })()}
+
                                                 {onLeave && (
                                                     <div className="mt-1">
                                                         <span className="badge bg-danger">
@@ -846,8 +820,14 @@ export default function DailySchedule() {
                                         </div>
                                     </div>
 
-                                    <div className="hours-cell">{getEmployeeTotalHours(employee.emp_id)}h</div>
-
+                                    <div className="hours-cell" style={{
+                                        color: employee.capacity?.is_over_daily ? '#ef4444'
+                                             : employee.capacity?.daily_pct >= 80 ? '#f59e0b'
+                                             : undefined,
+                                        fontWeight: employee.capacity?.is_over_daily ? 700 : 400
+                                    }}>
+                                        {employee.capacity ? `${employee.capacity.daily_used.toFixed(1)}h` : `${getEmployeeTotalHours(employee.emp_id)}h`}
+                                    </div>
                                     <div 
                                         className="employee-time-slots"
                                         onMouseDown={(e) => !onLeave && handleMouseDown(e, employee.emp_id)}

@@ -2,7 +2,7 @@ from supabase import create_client, Client
 from flask import Flask, jsonify, request, session
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_cors import CORS
-from datetime import timedelta, datetime
+from datetime import timedelta, datetime, timezone
 from datetime import date
 from datetime import timezone
 import os
@@ -28,6 +28,8 @@ url = "https://asbfhxdomvclwsrekdxi.supabase.co"
 # key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFzYmZoeGRvbXZjbHdzcmVrZHhpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQzMjI3OTUsImV4cCI6MjA2OTg5ODc5NX0.0VzbWIc-uxIDhI03g04n8HSPRQ_p01UTJQ1sg8ggigU"
 key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFzYmZoeGRvbXZjbHdzcmVrZHhpIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NDMyMjc5NSwiZXhwIjoyMDY5ODk4Nzk1fQ.iPXQg3KBXGXNlJwMzv5Novm0Qnc7Y5sPNE4RYxg3wqI"
 supabase: Client = create_client(url, key)
+def utc_now_iso():
+    return datetime.utcnow().isoformat()
 
 @app.route('/dashboard/stats', methods=['GET'])
 def dashboard_stats():
@@ -105,28 +107,125 @@ def dashboard_stats():
 
 @app.route('/scheduled', methods=['GET'])
 def schedule():
-    clients = supabase.table("client").select("*").execute()
-    employees = supabase.table("employee_final").select("*").execute()
-    shifts = supabase.table("shift").select("*").execute()
-    daily_shifts = supabase.table("daily_shift").select("*").execute()
-    leaves = supabase.table("leaves").select("*").execute().data
+    date_param    = request.args.get("date", datetime.utcnow().date().isoformat())
+    service_param = request.args.get("service")
+
+    employees_q = supabase.table("employee_final").select("*")
+    if service_param:
+        employees_q = employees_q.ilike("service_type", f"%{service_param}%")
+
+    clients      = supabase.table("client").select("*").execute().data      or []
+    employees    = employees_q.execute().data                                or []
+    all_shifts   = supabase.table("shift").select("*").execute().data       or []
+    daily_shifts = supabase.table("daily_shift").select("*").execute().data or []
+    all_leaves   = supabase.table("leaves").select("*").execute().data      or []
+
+    # index leaves by emp_id
+    leaves_by_emp = {}
+    for lv in all_leaves:
+        leaves_by_emp.setdefault(lv.get("emp_id"), []).append(lv)
+
+    # enrich shifts with leave flags
     enriched_shifts = []
-    for s in shifts.data:
-        emp_leave = next((l for l in leaves if l['emp_id'] == s.get('emp_id') 
-                          and l['leave_start_date'] <= s.get('date', '') <= l['leave_end_date']), None)
-        
-        s['is_leave'] = emp_leave is not None
-        s['leave_reason'] = emp_leave['leave_reason'] if emp_leave else ""
+    for s in all_shifts:
+        eid   = s.get("emp_id")
+        sdate = (s.get("date") or s.get("shift_start_time") or "")[:10]
+        emp_leave = next(
+            (lv for lv in leaves_by_emp.get(eid, [])
+             if lv.get("leave_start_date","") <= sdate <= lv.get("leave_end_date","")),
+            None
+        )
+        s["is_leave"]    = emp_leave is not None
+        s["leave_reason"] = emp_leave["leave_reason"] if emp_leave else ""
         enriched_shifts.append(s)
 
-    datatosend = {
-        "client": clients.data,
-        "employee": employees.data,
-        "shift": enriched_shifts, # Use the enriched list
-        "daily_shift": daily_shifts.data
-    }
-    return jsonify(datatosend)
+    # compute capacity stats per employee for the requested date
+    try:
+        req_date = datetime.strptime(date_param, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    except ValueError:
+        req_date = datetime.utcnow().replace(tzinfo=timezone.utc)
 
+    week_mon = req_date - timedelta(days=req_date.weekday())
+    week_sun = week_mon + timedelta(days=6)
+
+    shifts_by_emp = {}
+    for s in all_shifts:
+        eid = s.get("emp_id")
+        if eid:
+            shifts_by_emp.setdefault(eid, []).append(s)
+
+    def _shift_hrs(s):
+        start = parse_datetime(s.get("shift_start_time"))
+        end   = parse_datetime(s.get("shift_end_time"))
+        if start and end and end > start:
+            return (end - start).total_seconds() / 3600
+        return 0.0
+
+    def _date_str(s):
+        return (s.get("date") or s.get("shift_start_time") or "")[:10]
+
+    enriched_employees = []
+    for emp in employees:
+        eid        = emp["emp_id"]
+        daily_cap  = float(emp.get("max_daily_cap")  or 13)
+        weekly_cap = float(emp.get("max_weekly_cap") or 48)
+        min_daily  = float(emp.get("min_daily_cap")  or 0)
+        ot_cap     = float(emp.get("ot_weekly_cap")  or weekly_cap)
+
+        daily_used = weekly_used = 0.0
+        for s in shifts_by_emp.get(eid, []):
+            hrs = _shift_hrs(s)
+            if _date_str(s) == date_param:
+                daily_used += hrs
+            sdt = parse_datetime(s.get("date") or s.get("shift_start_time"))
+            if sdt:
+                sdt_naive = sdt.replace(tzinfo=timezone.utc) if sdt.tzinfo is None else sdt
+                if week_mon <= sdt_naive <= week_sun:
+                    weekly_used += hrs
+
+        on_leave_today = any(
+            lv.get("leave_start_date","") <= date_param <= lv.get("leave_end_date","")
+            for lv in leaves_by_emp.get(eid, [])
+        )
+        leave_info_today = next(
+            (lv for lv in leaves_by_emp.get(eid, [])
+             if lv.get("leave_start_date","") <= date_param <= lv.get("leave_end_date","")),
+            None
+        )
+
+        enriched_employees.append({
+            **emp,
+            "on_leave_today": on_leave_today,
+            "leave_info":     leave_info_today,
+            "capacity": {
+                "daily_used":    round(daily_used,  2),
+                "daily_cap":     daily_cap,
+                "daily_remain":  round(max(daily_cap  - daily_used,  0), 2),
+                "daily_pct":     round(min(daily_used  / daily_cap  * 100, 100), 1) if daily_cap  else 0,
+                "weekly_used":   round(weekly_used, 2),
+                "weekly_cap":    weekly_cap,
+                "weekly_remain": round(max(weekly_cap - weekly_used, 0), 2),
+                "weekly_pct":    round(min(weekly_used / weekly_cap * 100, 100), 1) if weekly_cap else 0,
+                "ot_threshold":  ot_cap,
+                "is_ot":         weekly_used > ot_cap,
+                "is_over_daily":  daily_used  > daily_cap,
+                "is_over_weekly": weekly_used > weekly_cap,
+                "min_daily":     min_daily,
+                "is_under_min_daily": daily_used < min_daily and min_daily > 0,
+            }
+        })
+
+    return jsonify({
+        "client":      clients,
+        "employee":    enriched_employees,
+        "shift":       enriched_shifts,
+        "daily_shift": daily_shifts,
+        "leaves":      all_leaves,
+        "_meta": {
+            "snapshot_date": date_param,
+            "generated_at":  datetime.utcnow().isoformat() + "Z",
+        }
+    })
 @app.route('/submit', methods=['POST'])
 def edit_schedule():
     data = request.json
@@ -291,29 +390,31 @@ def detect_changes():
     return changes
 
 def parse_datetime(tstr: str) -> datetime:
-    """
-    Accepts multiple datetime formats and returns UTC-aware datetime.
-    Handles:
-    - YYYY-MM-DDTHH:MM[:SS]Z
-    - YYYY-MM-DD HH:MM[:SS]
-    - HH:MM  (assumes today, UTC)
-    """
     if not tstr:
         return None
 
     try:
-        # ISO UTC format with T and Z
-        if "T" in tstr:
-            return datetime.fromisoformat(tstr.replace("Z", "+00:00"))
+        tstr = str(tstr).strip()
 
-        # Date + time with space (YYYY-MM-DD HH:MM or YYYY-MM-DD HH:MM:SS)
+        # ISO format with T
+        if "T" in tstr:
+            # Normalize: replace Z, then pad single-digit hour (T9: -> T09:)
+            normalized = tstr.replace("Z", "+00:00")
+            # Fix single-digit hour: e.g. T9:30 -> T09:30
+            import re
+            normalized = re.sub(r'T(\d):', r'T0\1:', normalized)
+            return datetime.fromisoformat(normalized)
+
+        # Date + time with space
         if " " in tstr:
-            # Try with seconds first
             try:
                 return datetime.strptime(tstr, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
             except ValueError:
-                # Try without seconds
                 return datetime.strptime(tstr, "%Y-%m-%d %H:%M").replace(tzinfo=timezone.utc)
+
+        # Date-only (YYYY-MM-DD)
+        if len(tstr) == 10 and tstr[4] == "-" and tstr[7] == "-":
+            return datetime.strptime(tstr, "%Y-%m-%d").replace(tzinfo=timezone.utc)
 
         # Time only (HH:MM or HH:MM:SS)
         today = datetime.utcnow().date()
@@ -321,7 +422,7 @@ def parse_datetime(tstr: str) -> datetime:
             return datetime.strptime(f"{today} {tstr}", "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
         except ValueError:
             return datetime.strptime(f"{today} {tstr}", "%Y-%m-%d %H:%M").replace(tzinfo=timezone.utc)
-            
+
     except Exception as e:
         print(f"Time parse error for '{tstr}': {e}")
         return None
@@ -1225,6 +1326,59 @@ def update_client(client_id):
 
 ####Occupying for clock in and clock out routers
 from datetime import datetime
+
+def write_capacity_log(emp_id: int, shift_id: int, shift_date: str, hours_worked: float):
+    """
+    Upsert a row into employee_capacity_log for this shift.
+    Calculates OT based on ot_weekly_cap for the employee.
+    """
+    try:
+        emp = supabase.table("employee_final") \
+            .select("max_daily_cap, max_weekly_cap, ot_weekly_cap") \
+            .eq("emp_id", emp_id) \
+            .single() \
+            .execute().data
+
+        if not emp:
+            return
+
+        ot_cap     = float(emp.get("ot_weekly_cap")  or emp.get("max_weekly_cap") or 48)
+        weekly_cap = float(emp.get("max_weekly_cap") or 48)
+
+        week_date  = datetime.strptime(shift_date, "%Y-%m-%d")
+        week_mon   = week_date - timedelta(days=week_date.weekday())
+        week_sun   = week_mon  + timedelta(days=6)
+
+        existing_week = supabase.table("employee_capacity_log") \
+            .select("hours_worked") \
+            .eq("emp_id", emp_id) \
+            .gte("log_date", week_mon.strftime("%Y-%m-%d")) \
+            .lte("log_date", week_sun.strftime("%Y-%m-%d")) \
+            .neq("shift_id", shift_id) \
+            .execute().data or []
+
+        week_hrs_so_far = sum(float(r["hours_worked"]) for r in existing_week)
+        week_total      = week_hrs_so_far + hours_worked
+
+        is_overtime = week_total > ot_cap
+        ot_hours    = round(max(week_total - ot_cap, 0), 2) if is_overtime else 0.0
+
+        supabase.table("employee_capacity_log").upsert({
+            "emp_id":       emp_id,
+            "shift_id":     shift_id,
+            "log_date":     shift_date,
+            "hours_worked": round(hours_worked, 2),
+            "is_overtime":  is_overtime,
+            "ot_hours":     ot_hours,
+            "log_type":     "shift",
+            "updated_at":   utc_now_iso(),
+        }, on_conflict="emp_id,shift_id").execute()
+
+        print(f"[CAPACITY LOG] emp={emp_id} shift={shift_id} {hours_worked:.2f}h OT={is_overtime}")
+
+    except Exception as e:
+        print(f"[CAPACITY LOG ERROR] {e}")
+
 @app.route("/employee/<int:emp_id>/clock-status", methods=["GET"])
 def get_clock_status(emp_id):
     try:
@@ -1313,10 +1467,25 @@ def clock_out():
     if shift.data[0]["shift_status"] != "Clocked in":
         return jsonify({"error": "Shift is not clocked in"}), 400
 
+    clock_out_time = utc_now_iso()
     supabase.table("shift").update({
         "shift_status": "Clocked out",
-        "clock_out": utc_now_iso()
+        "clock_out": clock_out_time
     }).eq("shift_id", shift_id).execute()
+
+    # ── Write to immutable capacity log ──────────────────────────
+    shift_full = supabase.table("shift") \
+        .select("shift_start_time, shift_end_time, date, clock_in") \
+        .eq("shift_id", shift_id) \
+        .single().execute().data
+
+    if shift_full and shift_full.get("clock_in"):
+        clock_in_dt  = parse_datetime(shift_full["clock_in"])
+        clock_out_dt = parse_datetime(clock_out_time)
+        if clock_in_dt and clock_out_dt and clock_out_dt > clock_in_dt:
+            actual_hours = (clock_out_dt - clock_in_dt).total_seconds() / 3600
+            shift_date   = (shift_full.get("date") or shift_full.get("shift_start_time") or "")[:10]
+            write_capacity_log(emp_id, shift_id, shift_date, actual_hours)
 
     return jsonify({"status": "clocked_out"}), 200
 @app.route("/employee/<int:emp_id>/today-shifts", methods=["GET"])
@@ -2293,8 +2462,8 @@ This is a system-generated follow-up notification.
         "message": "Incident follow-up submitted successfully",
         "incident_id": incident_id
     }), 200
-def utc_now_iso():
-    return datetime.utcnow().isoformat()
+
+
 def report_injury(payload):
     try:
         injury_data = {
@@ -2536,6 +2705,8 @@ def send_email(subject, body):
         server.starttls()
         server.login("hemangee4700@gmail.com", "hvvm jfdz rkjs ynly")
         server.send_message(msg)
+
+
 
 def get_weekly_total_hours(emp_id, any_date_str):
     any_date = datetime.strptime(any_date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
@@ -3233,69 +3404,82 @@ def get_shift_recommendations(shift_id):
 def get_pending_reassignments():
     """
     Get all shifts with pending reassignment recommendations.
-    For supervisor dashboard view.
+    Batched version — 4 queries total regardless of conflict count.
     """
     try:
-        # Get all shifts with conflict status
-        conflict_shifts = supabase.table("shift") \
-            .select("*") \
-            .eq("shift_status", "⚠️ Conflicting Leave") \
+        conflict_shifts = (
+            supabase.table("shift")
+            .select("*")
+            .eq("shift_status", "⚠️ Conflicting Leave")
             .execute()
-        
-        if not conflict_shifts.data:
-            return jsonify({
-                "pending_count": 0,
-                "conflicts": []
-            }), 200
-        
-        conflicts = []
-        for shift in conflict_shifts.data:
-            # Get recommendations count
-            rec_count = supabase.table("shift_reassignment_recommendations") \
-                .select("recommendation_id", count="exact") \
-                .eq("shift_id", shift["shift_id"]) \
-                .eq("status", "pending") \
+            .data or []
+        )
+
+        if not conflict_shifts:
+            return jsonify({"pending_count": 0, "conflicts": []}), 200
+
+        shift_ids  = [s["shift_id"]  for s in conflict_shifts]
+        client_ids = list({s["client_id"] for s in conflict_shifts if s.get("client_id")})
+        emp_ids    = list({s["emp_id"]    for s in conflict_shifts if s.get("emp_id")})
+
+        # batch fetch recommendations count
+        rec_rows = (
+            supabase.table("shift_reassignment_recommendations")
+            .select("shift_id")
+            .in_("shift_id", shift_ids)
+            .eq("status", "pending")
+            .execute()
+            .data or []
+        )
+        rec_counts = {}
+        for r in rec_rows:
+            sid = r["shift_id"]
+            rec_counts[sid] = rec_counts.get(sid, 0) + 1
+
+        # batch fetch clients
+        clients = {}
+        if client_ids:
+            for c in (
+                supabase.table("client")
+                .select("client_id, first_name, last_name, name")
+                .in_("client_id", client_ids)
                 .execute()
-            
-            # Get client
-            client = None
-            if shift.get("client_id"):
-                client_res = supabase.table("client") \
-                    .select("first_name, last_name, name") \
-                    .eq("client_id", shift["client_id"]) \
-                    .single() \
-                    .execute()
-                client = client_res.data if client_res.data else None
-            
-            # Get original employee
-            emp = None
-            if shift.get("emp_id"):
-                emp_res = supabase.table("employee_final") \
-                    .select("first_name, last_name") \
-                    .eq("emp_id", shift["emp_id"]) \
-                    .single() \
-                    .execute()
-                emp = emp_res.data if emp_res.data else None
-            
+                .data or []
+            ):
+                clients[c["client_id"]] = c
+
+        # batch fetch employees
+        emps = {}
+        if emp_ids:
+            for e in (
+                supabase.table("employee_final")
+                .select("emp_id, first_name, last_name")
+                .in_("emp_id", emp_ids)
+                .execute()
+                .data or []
+            ):
+                emps[e["emp_id"]] = e
+
+        conflicts = []
+        for s in conflict_shifts:
+            c   = clients.get(s.get("client_id")) or {}
+            emp = emps.get(s.get("emp_id"))       or {}
             conflicts.append({
-                "shift_id": shift["shift_id"],
-                "date": shift["date"],
-                "start_time": shift["shift_start_time"],
-                "end_time": shift["shift_end_time"],
-                "client_name": client.get("name") or f"{client['first_name']} {client['last_name']}" if client else "Unknown",
-                "original_employee": f"{emp['first_name']} {emp['last_name']}" if emp else "Unassigned",
-                "recommendations_count": rec_count.count or 0
+                "shift_id":              s["shift_id"],
+                "date":                  s["date"],
+                "start_time":            s["shift_start_time"],
+                "end_time":              s["shift_end_time"],
+                "client_name":           c.get("name") or f"{c.get('first_name','')} {c.get('last_name','')}".strip() or "Unknown",
+                "original_employee":     f"{emp.get('first_name','')} {emp.get('last_name','')}".strip() or "Unassigned",
+                "recommendations_count": rec_counts.get(s["shift_id"], 0),
             })
-        
-        return jsonify({
-            "pending_count": len(conflicts),
-            "conflicts": conflicts
-        }), 200
-        
+
+        return jsonify({"pending_count": len(conflicts), "conflicts": conflicts}), 200
+
     except Exception as e:
         print(f"GET PENDING REASSIGNMENTS ERROR: {e}")
         return jsonify({"error": str(e)}), 500
-
+    
 @app.route("/reassignment/approve", methods=["POST"])
 def approve_reassignment():
     """
@@ -3315,6 +3499,18 @@ def approve_reassignment():
             "emp_id": recommended_emp_id,
             "shift_status": "Scheduled"
         }).eq("shift_id", shift_id).execute()
+
+        # 1b️⃣ Pre-log scheduled hours so capacity reflects reassignment immediately
+        shift_meta = supabase.table("shift") \
+            .select("shift_start_time, shift_end_time, date") \
+            .eq("shift_id", shift_id).single().execute().data
+        if shift_meta:
+            s = parse_datetime(shift_meta["shift_start_time"])
+            e = parse_datetime(shift_meta["shift_end_time"])
+            if s and e and e > s:
+                hrs        = (e - s).total_seconds() / 3600
+                shift_date = (shift_meta.get("date") or shift_meta.get("shift_start_time") or "")[:10]
+                write_capacity_log(recommended_emp_id, shift_id, shift_date, hrs)
         
         # 2️⃣ Mark all recommendations as processed
         supabase.table("shift_reassignment_recommendations").update({
@@ -4921,6 +5117,489 @@ def get_leaves():
         leaves = supabase.table("leaves").select("*").execute()
     
     return jsonify(leaves.data or [])
+
+# ─── NEW: capacity + heat-map endpoints ──────────────────────────────────────
+
+@app.route("/schedule/capacity", methods=["GET"])
+def schedule_capacity():
+    date_param    = request.args.get("date", datetime.utcnow().date().isoformat())
+    service_param = request.args.get("service")
+
+    emp_q = supabase.table("employee_final").select(
+        "emp_id, first_name, last_name, max_daily_cap, max_weekly_cap, min_daily_cap, ot_weekly_cap, service_type"
+    )
+    if service_param:
+        emp_q = emp_q.ilike("service_type", f"%{service_param}%")
+
+    employees  = emp_q.execute().data or []
+    all_shifts = supabase.table("shift").select(
+        "shift_id, emp_id, date, shift_start_time, shift_end_time"
+    ).execute().data or []
+
+    try:
+        req_date = datetime.strptime(date_param, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    except ValueError:
+        req_date = datetime.utcnow().replace(tzinfo=timezone.utc)
+
+    week_mon = req_date - timedelta(days=req_date.weekday())
+    week_sun = week_mon + timedelta(days=6)
+
+    shifts_by_emp = {}
+    for s in all_shifts:
+        eid = s.get("emp_id")
+        if eid:
+            shifts_by_emp.setdefault(eid, []).append(s)
+
+    def _hrs(s):
+        start = parse_datetime(s.get("shift_start_time"))
+        end   = parse_datetime(s.get("shift_end_time"))
+        return (end - start).total_seconds() / 3600 if start and end and end > start else 0.0
+
+    result = []
+    for emp in employees:
+        eid        = emp["emp_id"]
+        daily_cap  = float(emp.get("max_daily_cap")  or 13)
+        weekly_cap = float(emp.get("max_weekly_cap") or 48)
+        ot_cap     = float(emp.get("ot_weekly_cap")  or weekly_cap)
+        min_daily  = float(emp.get("min_daily_cap")  or 0)
+
+        daily_used = weekly_used = 0.0
+        for s in shifts_by_emp.get(eid, []):
+            hrs  = _hrs(s)
+            sraw = (s.get("date") or s.get("shift_start_time") or "")[:10]
+            if sraw == date_param:
+                daily_used += hrs
+            sdt = parse_datetime(s.get("date") or s.get("shift_start_time"))
+            if sdt:
+                sdt = sdt.replace(tzinfo=timezone.utc) if sdt.tzinfo is None else sdt
+                if week_mon <= sdt <= week_sun:
+                    weekly_used += hrs
+
+        daily_pct  = round(min(daily_used  / daily_cap  * 100, 100), 1) if daily_cap  else 0
+        weekly_pct = round(min(weekly_used / weekly_cap * 100, 100), 1) if weekly_cap else 0
+
+        status = ("over"      if daily_used > daily_cap or weekly_used > weekly_cap
+             else "ot"        if weekly_used > ot_cap
+             else "warning"   if daily_pct >= 80 or weekly_pct >= 80
+             else "under_min" if daily_used < min_daily and min_daily > 0
+             else "ok")
+
+        result.append({
+            "emp_id":       eid,
+            "name":         f"{emp['first_name']} {emp.get('last_name','')}".strip(),
+            "service_type": emp.get("service_type"),
+            "daily_used":   round(daily_used,  2),
+            "daily_cap":    daily_cap,
+            "daily_pct":    daily_pct,
+            "weekly_used":  round(weekly_used, 2),
+            "weekly_cap":   weekly_cap,
+            "weekly_pct":   weekly_pct,
+            "ot_threshold": ot_cap,
+            "is_ot":        weekly_used > ot_cap,
+            "status":       status,
+        })
+
+    result.sort(key=lambda x: (0 if x["status"] == "over" else 1, -x["daily_pct"]))
+    return jsonify(result), 200
+
+
+@app.route("/schedule/heat-map", methods=["GET"])
+def schedule_heat_map():
+    days_param    = min(int(request.args.get("days", 14)), 42)
+    service_param = request.args.get("service")
+    today         = datetime.utcnow().date()
+    date_range    = [(today + timedelta(days=i)).isoformat() for i in range(days_param)]
+    d_start, d_end = date_range[0], date_range[-1]
+
+    shifts = (
+        supabase.table("shift")
+        .select("shift_id, emp_id, client_id, date, shift_start_time, shift_end_time, shift_status")
+        .gte("date", d_start)
+        .lte("date", d_end)
+        .execute()
+        .data or []
+    )
+
+    emp_q = supabase.table("employee_final").select("emp_id", count="exact")
+    if service_param:
+        emp_q = emp_q.ilike("service_type", f"%{service_param}%")
+    total_employees = emp_q.execute().count or 1
+
+    by_date = {d: [] for d in date_range}
+    for s in shifts:
+        d = (s.get("date") or s.get("shift_start_time") or "")[:10]
+        if d in by_date:
+            by_date[d].append(s)
+
+    def _hrs(s):
+        start = parse_datetime(s.get("shift_start_time"))
+        end   = parse_datetime(s.get("shift_end_time"))
+        return (end - start).total_seconds() / 3600 if start and end and end > start else 0.0
+
+    result = []
+    for d in date_range:
+        day_shifts    = by_date[d]
+        total_hrs     = sum(_hrs(s) for s in day_shifts)
+        emp_set       = {s["emp_id"]    for s in day_shifts if s.get("emp_id")}
+        client_set    = {s["client_id"] for s in day_shifts if s.get("client_id")}
+        has_gaps      = any(s["shift_status"] == "Unassigned"          for s in day_shifts)
+        has_conflicts = any(s["shift_status"] == "⚠️ Conflicting Leave" for s in day_shifts)
+        coverage_pct  = round(min(len(emp_set) / total_employees * 100, 100), 1)
+        dt = datetime.strptime(d, "%Y-%m-%d")
+        result.append({
+            "date":          d,
+            "weekday":       dt.strftime("%a"),
+            "is_weekend":    dt.weekday() >= 5,
+            "total_hours":   round(total_hrs, 1),
+            "emp_count":     len(emp_set),
+            "client_count":  len(client_set),
+            "shift_count":   len(day_shifts),
+            "coverage_pct":  coverage_pct,
+            "has_gaps":      has_gaps,
+            "has_conflicts": has_conflicts,
+        })
+
+    return jsonify(result), 200
+
+
+@app.route("/employee/<int:emp_id>/capacity-timeline", methods=["GET"])
+def employee_capacity_timeline(emp_id):
+    weeks_param = min(int(request.args.get("weeks", 6)), 12)
+
+    emp = (
+        supabase.table("employee_final")
+        .select("emp_id, first_name, last_name, max_daily_cap, max_weekly_cap, ot_weekly_cap, min_weekly_cap")
+        .eq("emp_id", emp_id)
+        .single()
+        .execute()
+        .data
+    )
+    if not emp:
+        return jsonify({"error": "Employee not found"}), 404
+
+    weekly_cap = float(emp.get("max_weekly_cap") or 48)
+    ot_cap     = float(emp.get("ot_weekly_cap")  or weekly_cap)
+    min_weekly = float(emp.get("min_weekly_cap") or 0)
+
+    today  = datetime.utcnow().date()
+    mon0   = today - timedelta(days=today.weekday())
+
+    all_shifts = (
+        supabase.table("shift")
+        .select("shift_start_time, shift_end_time, date")
+        .eq("emp_id", emp_id)
+        .execute()
+        .data or []
+    )
+
+    def _hrs(s):
+        start = parse_datetime(s.get("shift_start_time"))
+        end   = parse_datetime(s.get("shift_end_time"))
+        return (end - start).total_seconds() / 3600 if start and end and end > start else 0.0
+
+    timeline = []
+    for i in range(-1, weeks_param - 1):
+        w_start = mon0 + timedelta(weeks=i)
+        w_end   = w_start + timedelta(days=6)
+        w_hrs   = sum(
+            _hrs(s) for s in all_shifts
+            if w_start.isoformat() <= (s.get("date") or s.get("shift_start_time") or "")[:10] <= w_end.isoformat()
+        )
+        timeline.append({
+            "week_start":      w_start.isoformat(),
+            "week_end":        w_end.isoformat(),
+            "label":           f"Wk {w_start.strftime('%b %d')}",
+            "hours":           round(w_hrs, 2),
+            "cap":             weekly_cap,
+            "ot_threshold":    ot_cap,
+            "min_weekly":      min_weekly,
+            "pct":             round(min(w_hrs / weekly_cap * 100, 100), 1) if weekly_cap else 0,
+            "is_ot":           w_hrs > ot_cap,
+            "is_over":         w_hrs > weekly_cap,
+            "under_min":       w_hrs < min_weekly and min_weekly > 0,
+            "is_current_week": i == 0,
+        })
+
+    return jsonify({
+        "emp_id":       emp["emp_id"],
+        "name":         f"{emp['first_name']} {emp.get('last_name','')}".strip(),
+        "weekly_cap":   weekly_cap,
+        "ot_threshold": ot_cap,
+        "min_weekly":   min_weekly,
+        "timeline":     timeline,
+    }), 200
+
+# ─── CAPACITY LOG READ ENDPOINTS ─────────────────────────────────────────────
+
+@app.route("/employee/<int:emp_id>/capacity", methods=["GET"])
+def get_employee_capacity(emp_id):
+    """
+    GET /employee/<id>/capacity?date=YYYY-MM-DD
+
+    Returns:
+      - daily:   hours today vs daily cap
+      - weekly:  hours this week vs weekly cap + OT flag
+      - total:   all-time hours from the log (payroll running total)
+      - payroll_period: hours between ?from= and ?to= for custom payroll windows
+    """
+    date_param = request.args.get("date", datetime.utcnow().date().isoformat())
+    from_param = request.args.get("from")   # optional payroll window start
+    to_param   = request.args.get("to")     # optional payroll window end
+
+    emp = supabase.table("employee_final") \
+        .select("emp_id, first_name, last_name, max_daily_cap, max_weekly_cap, ot_weekly_cap, min_daily_cap, min_weekly_cap") \
+        .eq("emp_id", emp_id).single().execute().data
+
+    if not emp:
+        return jsonify({"error": "Employee not found"}), 404
+
+    daily_cap  = float(emp.get("max_daily_cap")  or 13)
+    weekly_cap = float(emp.get("max_weekly_cap") or 48)
+    ot_cap     = float(emp.get("ot_weekly_cap")  or weekly_cap)
+    min_daily  = float(emp.get("min_daily_cap")  or 0)
+    min_weekly = float(emp.get("min_weekly_cap") or 0)
+
+    # ── window boundaries ─────────────────────────────────────────
+    try:
+        req_date = datetime.strptime(date_param, "%Y-%m-%d")
+    except ValueError:
+        req_date = datetime.utcnow()
+
+    week_mon = req_date - timedelta(days=req_date.weekday())
+    week_sun = week_mon + timedelta(days=6)
+
+    # ── fetch log rows ────────────────────────────────────────────
+    all_logs = supabase.table("employee_capacity_log") \
+        .select("log_date, hours_worked, is_overtime, ot_hours, shift_id") \
+        .eq("emp_id", emp_id) \
+        .order("log_date", desc=True) \
+        .execute().data or []
+
+    # daily
+    daily_logs  = [r for r in all_logs if r["log_date"] == date_param]
+    daily_used  = sum(float(r["hours_worked"]) for r in daily_logs)
+
+    # weekly
+    weekly_logs  = [r for r in all_logs
+                    if week_mon.strftime("%Y-%m-%d") <= r["log_date"] <= week_sun.strftime("%Y-%m-%d")]
+    weekly_used  = sum(float(r["hours_worked"]) for r in weekly_logs)
+    weekly_ot    = sum(float(r["ot_hours"])     for r in weekly_logs)
+
+    # total (all-time payroll running sum)
+    total_hours = sum(float(r["hours_worked"]) for r in all_logs)
+    total_ot    = sum(float(r["ot_hours"])     for r in all_logs)
+
+    # optional payroll window
+    payroll_data = None
+    if from_param and to_param:
+        period_logs   = [r for r in all_logs if from_param <= r["log_date"] <= to_param]
+        payroll_hours = sum(float(r["hours_worked"]) for r in period_logs)
+        payroll_ot    = sum(float(r["ot_hours"])     for r in period_logs)
+        payroll_data  = {
+            "from":            from_param,
+            "to":              to_param,
+            "hours":           round(payroll_hours, 2),
+            "ot_hours":        round(payroll_ot,    2),
+            "regular_hours":   round(payroll_hours - payroll_ot, 2),
+            "days_worked":     len({r["log_date"] for r in period_logs}),
+        }
+
+    return jsonify({
+        "emp_id":    emp_id,
+        "name":      f"{emp['first_name']} {emp.get('last_name','')}".strip(),
+        "daily": {
+            "date":        date_param,
+            "used":        round(daily_used,  2),
+            "cap":         daily_cap,
+            "remain":      round(max(daily_cap - daily_used, 0), 2),
+            "pct":         round(min(daily_used / daily_cap * 100, 100), 1) if daily_cap else 0,
+            "is_over":     daily_used > daily_cap,
+            "under_min":   daily_used < min_daily and min_daily > 0,
+            "min_cap":     min_daily,
+        },
+        "weekly": {
+            "week_start":  week_mon.strftime("%Y-%m-%d"),
+            "week_end":    week_sun.strftime("%Y-%m-%d"),
+            "used":        round(weekly_used, 2),
+            "cap":         weekly_cap,
+            "remain":      round(max(weekly_cap - weekly_used, 0), 2),
+            "pct":         round(min(weekly_used / weekly_cap * 100, 100), 1) if weekly_cap else 0,
+            "is_over":     weekly_used > weekly_cap,
+            "is_ot":       weekly_used > ot_cap,
+            "ot_threshold":ot_cap,
+            "ot_hours":    round(weekly_ot,   2),
+            "under_min":   weekly_used < min_weekly and min_weekly > 0,
+            "min_cap":     min_weekly,
+        },
+        "total": {
+            "all_time_hours":   round(total_hours, 2),
+            "all_time_ot_hours":round(total_ot,    2),
+            "regular_hours":    round(total_hours - total_ot, 2),
+            "log_entries":      len(all_logs),
+        },
+        "payroll_period": payroll_data,
+    }), 200
+
+
+@app.route("/capacity/team", methods=["GET"])
+def get_team_capacity():
+    """
+    GET /capacity/team?date=YYYY-MM-DD&service=<location>
+
+    Snapshot of every employee's daily + weekly capacity right now.
+    Sorted: over-cap first, then OT, then warning, then ok.
+    """
+    date_param    = request.args.get("date", datetime.utcnow().date().isoformat())
+    service_param = request.args.get("service")
+
+    emp_q = supabase.table("employee_final").select(
+        "emp_id, first_name, last_name, max_daily_cap, max_weekly_cap, ot_weekly_cap, min_daily_cap, min_weekly_cap, service_type"
+    )
+    if service_param:
+        emp_q = emp_q.ilike("service_type", f"%{service_param}%")
+    employees = emp_q.execute().data or []
+
+    if not employees:
+        return jsonify([]), 200
+
+    emp_ids = [e["emp_id"] for e in employees]
+
+    try:
+        req_date = datetime.strptime(date_param, "%Y-%m-%d")
+    except ValueError:
+        req_date = datetime.utcnow()
+    week_mon = req_date - timedelta(days=req_date.weekday())
+    week_sun = week_mon + timedelta(days=6)
+
+    # Batch fetch all relevant log rows in ONE query
+    logs = supabase.table("employee_capacity_log") \
+        .select("emp_id, log_date, hours_worked, ot_hours") \
+        .in_("emp_id", emp_ids) \
+        .gte("log_date", week_mon.strftime("%Y-%m-%d")) \
+        .lte("log_date", week_sun.strftime("%Y-%m-%d")) \
+        .execute().data or []
+
+    # index by emp_id
+    logs_by_emp = {}
+    for r in logs:
+        logs_by_emp.setdefault(r["emp_id"], []).append(r)
+
+    STATUS_ORDER = {"over": 0, "ot": 1, "warning": 2, "under_min": 3, "ok": 4}
+    result = []
+
+    for emp in employees:
+        eid        = emp["emp_id"]
+        daily_cap  = float(emp.get("max_daily_cap")  or 13)
+        weekly_cap = float(emp.get("max_weekly_cap") or 48)
+        ot_cap     = float(emp.get("ot_weekly_cap")  or weekly_cap)
+        min_daily  = float(emp.get("min_daily_cap")  or 0)
+        min_weekly = float(emp.get("min_weekly_cap") or 0)
+
+        emp_logs   = logs_by_emp.get(eid, [])
+        daily_used = sum(float(r["hours_worked"]) for r in emp_logs if r["log_date"] == date_param)
+        weekly_used= sum(float(r["hours_worked"]) for r in emp_logs)
+        weekly_ot  = sum(float(r["ot_hours"])     for r in emp_logs)
+
+        status = ("over"      if daily_used > daily_cap or weekly_used > weekly_cap
+             else "ot"        if weekly_used > ot_cap
+             else "warning"   if (daily_used / daily_cap > 0.8 if daily_cap else False) or (weekly_used / weekly_cap > 0.8 if weekly_cap else False)
+             else "under_min" if (daily_used < min_daily and min_daily > 0)
+             else "ok")
+
+        result.append({
+            "emp_id":        eid,
+            "name":          f"{emp['first_name']} {emp.get('last_name','')}".strip(),
+            "service_type":  emp.get("service_type"),
+            "status":        status,
+            "daily": {
+                "used":    round(daily_used,  2),
+                "cap":     daily_cap,
+                "pct":     round(min(daily_used / daily_cap * 100, 100), 1) if daily_cap else 0,
+                "is_over": daily_used > daily_cap,
+            },
+            "weekly": {
+                "used":         round(weekly_used, 2),
+                "cap":          weekly_cap,
+                "pct":          round(min(weekly_used / weekly_cap * 100, 100), 1) if weekly_cap else 0,
+                "is_over":      weekly_used > weekly_cap,
+                "is_ot":        weekly_used > ot_cap,
+                "ot_hours":     round(weekly_ot, 2),
+                "ot_threshold": ot_cap,
+            },
+        })
+
+    result.sort(key=lambda x: (STATUS_ORDER.get(x["status"], 99), -x["weekly"]["used"]))
+    return jsonify(result), 200
+
+
+@app.route("/capacity/payroll-report", methods=["GET"])
+def payroll_report():
+    """
+    GET /capacity/payroll-report?from=YYYY-MM-DD&to=YYYY-MM-DD&service=<location>
+
+    Payroll export — one row per employee with:
+      regular hours, OT hours, total hours, days worked
+    for the given date window.
+    """
+    from_param    = request.args.get("from")
+    to_param      = request.args.get("to")
+    service_param = request.args.get("service")
+
+    if not from_param or not to_param:
+        return jsonify({"error": "from and to date params required"}), 400
+
+    emp_q = supabase.table("employee_final").select(
+        "emp_id, first_name, last_name, payroll_no, employee_type, service_type, salary_base, ot_weekly_cap"
+    )
+    if service_param:
+        emp_q = emp_q.ilike("service_type", f"%{service_param}%")
+    employees = emp_q.execute().data or []
+
+    if not employees:
+        return jsonify({"report": [], "period": {"from": from_param, "to": to_param}}), 200
+
+    emp_ids = [e["emp_id"] for e in employees]
+
+    logs = supabase.table("employee_capacity_log") \
+        .select("emp_id, log_date, hours_worked, ot_hours, shift_id") \
+        .in_("emp_id", emp_ids) \
+        .gte("log_date", from_param) \
+        .lte("log_date", to_param) \
+        .execute().data or []
+
+    logs_by_emp = {}
+    for r in logs:
+        logs_by_emp.setdefault(r["emp_id"], []).append(r)
+
+    report = []
+    for emp in employees:
+        eid       = emp["emp_id"]
+        emp_logs  = logs_by_emp.get(eid, [])
+        total_hrs = sum(float(r["hours_worked"]) for r in emp_logs)
+        ot_hrs    = sum(float(r["ot_hours"])     for r in emp_logs)
+        reg_hrs   = total_hrs - ot_hrs
+        days      = len({r["log_date"] for r in emp_logs})
+
+        report.append({
+            "emp_id":        eid,
+            "payroll_no":    emp.get("payroll_no"),
+            "name":          f"{emp['first_name']} {emp.get('last_name','')}".strip(),
+            "service_type":  emp.get("service_type"),
+            "employee_type": emp.get("status"),
+            "regular_hours": round(reg_hrs,   2),
+            "ot_hours":      round(ot_hrs,    2),
+            "total_hours":   round(total_hrs, 2),
+            "days_worked":   days,
+            "shifts_logged": len(emp_logs),
+        })
+
+    report.sort(key=lambda x: x["name"])
+    return jsonify({
+        "period":        {"from": from_param, "to": to_param},
+        "generated_at":  datetime.utcnow().isoformat() + "Z",
+        "employee_count":len(report),
+        "report":        report,
+    }), 200
 
 # --- Run ---
 if __name__ == '__main__':
