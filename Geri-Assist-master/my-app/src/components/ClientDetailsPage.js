@@ -3,6 +3,8 @@ import React, { useEffect, useState } from "react";
 import axios from "axios";
 import API_URL from '../config/api';
 import jsPDF from "jspdf";
+import ScheduleGrid from "./ScheduleGrid";
+import { fetchServiceSchedule } from "../services/api";
 
 
 // ---------- EXPORT HELPERS ----------
@@ -217,8 +219,7 @@ export default function ClientDetailsPage() {
     "85 Neeve",
     "87 Neeve",
     "Willow Place",
-    "Outreach",
-    "Assisted Living"
+    "Outreach"
   ];
 
   const tabs = [
@@ -251,60 +252,68 @@ export default function ClientDetailsPage() {
           </h1>
           <p className="text-muted">Comprehensive client information and care management</p>
         </div>
-        <div className="d-flex gap-2">
+
+        <div className="d-flex align-items-center gap-3">
+          {/* --- TOTAL CLIENT COUNTER --- */}
           {!selectedClient && (
-            <div className="btn-group">
-              <button
-                className="btn btn-dark dropdown-toggle"
-                data-bs-toggle="dropdown"
-                type="button"
-              >
-                <i className="bi bi-database-down me-1"></i> Bulk Export
-              </button>
-              <ul className="dropdown-menu dropdown-menu-end">
-                <li>
-                  <button
-                    className="dropdown-item"
-                    onClick={() => exportToJSON(filteredClients, "clients_bulk")}
-                  >
-                    Export All (JSON)
-                  </button>
-                </li>
-                <li>
-                  <button
-                    className="dropdown-item"
-                    onClick={() => exportToCSV(filteredClients, "clients_bulk")}
-                  >
-                    Export All (CSV)
-                  </button>
-                </li>
-                <li>
-                  <button
-                    className="dropdown-item"
-                    onClick={() => exportToPDF(filteredClients, "clients_bulk")}
-                  >
-                    Export All (PDF)
-                  </button>
-                </li>
-              </ul>
+            <div className="text-end me-2 d-none d-sm-block">
+              <span className="text-muted small fw-bold text-uppercase d-block" style={{ fontSize: '0.7rem', letterSpacing: '0.5px' }}>
+                Total Clients
+              </span>
+              <span className="h4 fw-bold text-primary mb-0">
+                {filteredClients.length}
+              </span>
             </div>
           )}
 
-          {selectedClient && (
-            <button
-              className="btn btn-outline-secondary"
-              onClick={() => {
-                setSelectedClient(null);
-                setIsEditing(false);
-                setSearch("");
-              }}
-            >
-              <i className="bi bi-arrow-left me-2"></i>
-              Back to List
-            </button>
-          )}
-        </div>
+          {/* Vertical Separator */}
+          {!selectedClient && <div className="vr d-none d-sm-block" style={{ height: '30px', marginTop: '10px' }}></div>}
 
+          <div className="d-flex gap-2">
+            {!selectedClient && (
+              <div className="btn-group">
+                <button
+                  className="btn btn-dark dropdown-toggle shadow-sm"
+                  data-bs-toggle="dropdown"
+                  type="button"
+                >
+                  <i className="bi bi-database-down me-1"></i> Bulk Export
+                </button>
+                <ul className="dropdown-menu dropdown-menu-end">
+                  <li>
+                    <button className="dropdown-item" onClick={() => exportToJSON(filteredClients, "clients_bulk")}>
+                      Export All (JSON)
+                    </button>
+                  </li>
+                  <li>
+                    <button className="dropdown-item" onClick={() => exportToCSV(filteredClients, "clients_bulk")}>
+                      Export All (CSV)
+                    </button>
+                  </li>
+                  <li>
+                    <button className="dropdown-item" onClick={() => exportToPDF(filteredClients, "clients_bulk")}>
+                      Export All (PDF)
+                    </button>
+                  </li>
+                </ul>
+              </div>
+            )}
+
+            {selectedClient && (
+              <button
+                className="btn btn-outline-secondary"
+                onClick={() => {
+                  setSelectedClient(null);
+                  setIsEditing(false);
+                  setSearch("");
+                }}
+              >
+                <i className="bi bi-arrow-left me-2"></i>
+                Back to List
+              </button>
+            )}
+          </div>
+        </div>
       </div>
 
       {!selectedClient ? (
@@ -345,11 +354,10 @@ export default function ClientDetailsPage() {
                   <ul
                     className="dropdown-menu dropdown-menu-end"
                     style={{
-                      maxHeight: '240px', // ~6 items
+                      maxHeight: '240px',
                       overflowY: 'auto'
                     }}
                   >
-
                     <li><a className="dropdown-item" href="#" onClick={(e) => { e.preventDefault(); setLocationFilter(''); }}>All Locations</a></li>
                     <li><hr className="dropdown-divider" /></li>
                     {locations.map(loc => (
@@ -383,7 +391,6 @@ export default function ClientDetailsPage() {
                     setSelectedClient(client);
                     fetchClientDetails(client.client_id);
                   }}
-
                 >
                   <div className="card-body text-center p-4">
                     <img
@@ -447,32 +454,17 @@ export default function ClientDetailsPage() {
                   </button>
                   <ul className="dropdown-menu dropdown-menu-end">
                     <li>
-                      <button
-                        className="dropdown-item"
-                        onClick={() =>
-                          exportToJSON(selectedClient, `client_${selectedClient.client_id}`)
-                        }
-                      >
+                      <button className="dropdown-item" onClick={() => exportToJSON(selectedClient, `client_${selectedClient.client_id}`)}>
                         Export as JSON
                       </button>
                     </li>
                     <li>
-                      <button
-                        className="dropdown-item"
-                        onClick={() =>
-                          exportToCSV(selectedClient, `client_${selectedClient.client_id}`)
-                        }
-                      >
+                      <button className="dropdown-item" onClick={() => exportToCSV(selectedClient, `client_${selectedClient.client_id}`)}>
                         Export as CSV
                       </button>
                     </li>
                     <li>
-                      <button
-                        className="dropdown-item"
-                        onClick={() =>
-                          exportToPDF(selectedClient, `client_${selectedClient.client_id}`)
-                        }
-                      >
+                      <button className="dropdown-item" onClick={() => exportToPDF(selectedClient, `client_${selectedClient.client_id}`)}>
                         Export as PDF
                       </button>
                     </li>
@@ -811,12 +803,9 @@ function MedicalHistoryTab({ client, isEditing, editForm, handleInputChange }) {
 // 3. Emergency Contacts Tab
 function EmergencyContactsTab({ client, emergencyContacts, setEmergencyContacts, fetchClientDetails }) {
   const [isAdding, setIsAdding] = useState(false);
-  const [newContact, setNewContact] = useState({
-    name: '',
-    relationship: '',
-    phone: '',
-    email: ''
-  });
+  const [editingId, setEditingId] = useState(null); 
+  const [editForm, setEditForm] = useState({ name: '', relationship: '', phone: '', email: '' });
+  const [newContact, setNewContact] = useState({ name: '', relationship: '', phone: '', email: '' });
 
   const handleAddContact = async () => {
     try {
@@ -832,20 +821,15 @@ function EmergencyContactsTab({ client, emergencyContacts, setEmergencyContacts,
         setNewContact({ name: '', relationship: '', phone: '', email: '' });
         setIsAdding(false);
         alert("Contact added successfully!");
-      } else {
-        alert("Failed to add contact.");
       }
     } catch (error) {
       console.error('Error adding contact:', error);
-      alert("Error adding contact.");
     }
   };
 
-  const handleDeleteContact = async (contactId) => {
-    if (!window.confirm("Delete this contact?")) return;
-
+  const handleUpdateContact = async () => {
     try {
-      const updatedContacts = emergencyContacts.filter(c => c.id !== contactId);
+      const updatedContacts = emergencyContacts.map(c => c.id === editingId ? { ...editForm, id: editingId } : c);
       const response = await fetch(`${API_URL}/clients/${client.client_id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -854,13 +838,26 @@ function EmergencyContactsTab({ client, emergencyContacts, setEmergencyContacts,
 
       if (response.ok) {
         await fetchClientDetails(client.client_id);
-        alert("Contact deleted successfully!");
-      } else {
-        alert("Failed to delete contact.");
+        setEditingId(null);
+        alert("Contact updated successfully!");
       }
     } catch (error) {
+      console.error('Error updating contact:', error);
+    }
+  };
+
+  const handleDeleteContact = async (contactId) => {
+    if (!window.confirm("Delete this contact?")) return;
+    try {
+      const updatedContacts = emergencyContacts.filter(c => c.id !== contactId);
+      const response = await fetch(`${API_URL}/clients/${client.client_id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ emergency_contacts: updatedContacts })
+      });
+      if (response.ok) await fetchClientDetails(client.client_id);
+    } catch (error) {
       console.error('Error deleting contact:', error);
-      alert("Error deleting contact.");
     }
   };
 
@@ -868,10 +865,7 @@ function EmergencyContactsTab({ client, emergencyContacts, setEmergencyContacts,
     <div>
       <div className="d-flex justify-content-between align-items-center mb-4">
         <h5 className="m-0"><i className="bi bi-telephone-plus me-2"></i>Emergency Contacts</h5>
-        <button
-          className="btn btn-primary btn-sm rounded-pill px-3"
-          onClick={() => setIsAdding(!isAdding)}
-        >
+        <button className="btn btn-primary btn-sm rounded-pill px-3" onClick={() => setIsAdding(!isAdding)}>
           <i className={`bi ${isAdding ? 'bi-x-circle' : 'bi-plus-circle'} me-1`}></i>
           {isAdding ? 'Cancel' : 'Add Contact'}
         </button>
@@ -881,43 +875,16 @@ function EmergencyContactsTab({ client, emergencyContacts, setEmergencyContacts,
         <div className="card mb-4 p-3 bg-light">
           <h6 className="mb-3">New Emergency Contact</h6>
           <div className="row g-3">
+            <div className="col-md-6"><input className="form-control" placeholder="Name" value={newContact.name} onChange={(e) => setNewContact({ ...newContact, name: e.target.value })} /></div>
             <div className="col-md-6">
-              <input
-                className="form-control"
-                placeholder="Name"
-                value={newContact.name}
-                onChange={(e) => setNewContact({ ...newContact, name: e.target.value })}
-              />
+              <select className="form-select" value={newContact.relationship} onChange={(e) => setNewContact({ ...newContact, relationship: e.target.value })}>
+                <option value="">Select Relationship</option>
+                <option value="Parent">Parent</option><option value="Sibling">Sibling</option><option value="Spouse">Spouse</option><option value="Child">Child</option><option value="Guardian">Guardian</option><option value="Friend">Friend</option><option value="Social Worker">Social Worker</option>
+              </select>
             </div>
-            <div className="col-md-6">
-              <input
-                className="form-control"
-                placeholder="Relationship"
-                value={newContact.relationship}
-                onChange={(e) => setNewContact({ ...newContact, relationship: e.target.value })}
-              />
-            </div>
-            <div className="col-md-6">
-              <input
-                className="form-control"
-                placeholder="Phone"
-                value={newContact.phone}
-                onChange={(e) => setNewContact({ ...newContact, phone: e.target.value })}
-              />
-            </div>
-            <div className="col-md-6">
-              <input
-                className="form-control"
-                placeholder="Email"
-                value={newContact.email}
-                onChange={(e) => setNewContact({ ...newContact, email: e.target.value })}
-              />
-            </div>
-            <div className="col-12">
-              <button className="btn btn-success" onClick={handleAddContact}>
-                <i className="bi bi-check-lg me-1"></i> Save Contact
-              </button>
-            </div>
+            <div className="col-md-6"><input className="form-control" placeholder="Phone" value={newContact.phone} onChange={(e) => setNewContact({ ...newContact, phone: e.target.value })} /></div>
+            <div className="col-md-6"><input className="form-control" placeholder="Email" value={newContact.email} onChange={(e) => setNewContact({ ...newContact, email: e.target.value })} /></div>
+            <div className="col-12"><button className="btn btn-success" onClick={handleAddContact}><i className="bi bi-check-lg me-1"></i> Save Contact</button></div>
           </div>
         </div>
       )}
@@ -927,29 +894,42 @@ function EmergencyContactsTab({ client, emergencyContacts, setEmergencyContacts,
           emergencyContacts.map((contact, index) => (
             <div key={contact.id || index} className="col-md-6">
               <div className="p-3 rounded shadow-sm border bg-white">
-                <div className="d-flex align-items-center justify-content-between mb-2">
-                  <div className="fw-bold">{contact.name}</div>
-                  <div className="d-flex gap-2">
-                    <span className="badge bg-info text-dark">{contact.relationship}</span>
-                    <button
-                      className="btn btn-sm btn-outline-danger"
-                      onClick={() => handleDeleteContact(contact.id)}
-                    >
-                      <i className="bi bi-trash"></i>
-                    </button>
+                {editingId === contact.id ? (
+                  <div className="row g-2">
+                    <div className="col-12"><input className="form-control form-control-sm" value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value})} /></div>
+                    <div className="col-12">
+                       <select className="form-select form-select-sm" value={editForm.relationship} onChange={e => setEditForm({...editForm, relationship: e.target.value})}>
+                        <option value="Parent">Parent</option><option value="Sibling">Sibling</option><option value="Spouse">Spouse</option><option value="Child">Child</option><option value="Guardian">Guardian</option><option value="Friend">Friend</option><option value="Social Worker">Social Worker</option>
+                      </select>
+                    </div>
+                    <div className="col-12"><input className="form-control form-control-sm" value={editForm.phone} onChange={e => setEditForm({...editForm, phone: e.target.value})} /></div>
+                    <div className="col-12"><input className="form-control form-control-sm" value={editForm.email} onChange={e => setEditForm({...editForm, email: e.target.value})} /></div>
+                    <div className="col-12 mt-2">
+                      <button className="btn btn-sm btn-success me-2" onClick={handleUpdateContact}>Update</button>
+                      <button className="btn btn-sm btn-secondary" onClick={() => setEditingId(null)}>Cancel</button>
+                    </div>
                   </div>
-                </div>
-                <div className="small">
-                  <div className="mb-1"><i className="bi bi-telephone me-2 text-muted"></i>{contact.phone}</div>
-                  <div><i className="bi bi-envelope me-2 text-muted"></i>{contact.email}</div>
-                </div>
+                ) : (
+                  <>
+                    <div className="d-flex align-items-center justify-content-between mb-2">
+                      <div className="fw-bold">{contact.name}</div>
+                      <div className="d-flex gap-2">
+                        <span className="badge bg-info text-dark">{contact.relationship}</span>
+                        <button className="btn btn-sm btn-outline-primary" onClick={() => { setEditingId(contact.id); setEditForm(contact); }}><i className="bi bi-pencil"></i></button>
+                        <button className="btn btn-sm btn-outline-danger" onClick={() => handleDeleteContact(contact.id)}><i className="bi bi-trash"></i></button>
+                      </div>
+                    </div>
+                    <div className="small">
+                      <div className="mb-1"><i className="bi bi-telephone me-2 text-muted"></i>{contact.phone}</div>
+                      <div><i className="bi bi-envelope me-2 text-muted"></i>{contact.email}</div>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           ))
         ) : (
-          <div className="col-12 text-center py-4 text-muted">
-            No emergency contacts added yet.
-          </div>
+          <div className="col-12 text-center py-4 text-muted">No emergency contacts added yet.</div>
         )}
       </div>
     </div>
@@ -958,10 +938,102 @@ function EmergencyContactsTab({ client, emergencyContacts, setEmergencyContacts,
 
 // 4. Schedule Tab (Unchanged)
 function ScheduleTab({ client }) {
+  const [data, setData] = useState({ weeks: [], employees: [] });
+  const [loading, setLoading] = useState(true);
+
+  // We still fetch by location to get the relevant calendar headers/weeks
+  const serviceLocation = client.service_type || "Willow Place";
+
+  useEffect(() => {
+    const loadSchedule = async () => {
+      try {
+        setLoading(true);
+        // 1. Fetch the master schedule structure for headers (weeks)
+        const masterRes = await fetchServiceSchedule(serviceLocation);
+        
+        // 2. Fetch specific shifts from your new client-specific endpoint
+        const shiftRes = await axios.get(`${API_URL}/get_client_shifts?client_id=${client.client_id}`);
+        const clientShifts = shiftRes.data.shifts || [];
+
+        // Helper to extract HH:mm from SQL strings like "2026-02-11 06:30:00" or ISO "T" format
+        const formatTime = (t) => {
+          if (!t) return "";
+          const parts = t.includes('T') ? t.split('T')[1] : (t.includes(' ') ? t.split(' ')[1] : t);
+          return parts ? parts.substring(0, 5) : t.substring(0, 5);
+        };
+
+        // 3. Transform client shifts into the "Employee" row format your grid requires
+        const transformedData = {
+          weeks: masterRes.weeks || [],
+          employees: [
+            {
+              id: client.client_id,
+              name: `${client.first_name} ${client.last_name}`,
+              shifts: clientShifts.map(s => ({
+                id: s.shift_id,
+                date: s.date,
+                // Combines start and end into "HH:mm-HH:mm" format for the grid blocks
+                time: `${formatTime(s.shift_start_time)}-${formatTime(s.shift_end_time)}`,
+                // Maps your DB status to the UI type for color coding
+                type: s.shift_status?.toLowerCase() === 'completed' ? 'regular' : 'open',
+                training: s.shift_type === 'training'
+              }))
+            }
+          ]
+        };
+
+        setData(transformedData);
+      } catch (err) {
+        console.error("Failed to fetch client schedule:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (client.client_id) {
+      loadSchedule();
+    }
+  }, [client.client_id, serviceLocation]);
+
+  if (loading) return (
+    <div className="text-center py-5">
+      <div className="spinner-border text-primary" role="status"></div>
+      <p className="mt-2 text-muted">Loading schedule...</p>
+    </div>
+  );
+
   return (
-    <div className="text-center py-5 bg-light rounded border">
-      <i className="bi bi-calendar-range text-muted" style={{ fontSize: '2rem' }}></i>
-      <p className="mt-2 mb-0">Schedule management coming soon.</p>
+    <div className="schedule-container animate-fadeIn">
+      <div className="alert alert-info d-flex align-items-center mb-3">
+        <i className="bi bi-info-circle-fill me-2"></i>
+        <div>
+          Showing individual schedule for <strong>{client.first_name} {client.last_name}</strong> at {serviceLocation}.
+          <span className="ms-2 text-muted small">(Read-only View)</span>
+        </div>
+      </div>
+
+      <div className="border rounded shadow-sm bg-white p-2 overflow-auto">
+        {data.employees[0]?.shifts.length > 0 ? (
+          <ScheduleGrid
+            service={serviceLocation}
+            data={data}
+            // Passing an empty function explicitly disables the edit modal trigger
+            onShiftClick={() => {}}
+          />
+        ) : (
+          <div className="text-center py-5">
+            <i className="bi bi-calendar-x text-muted fs-2"></i>
+            <p className="mt-2">No specific shifts found for this client in the shift database.</p>
+          </div>
+        )}
+      </div>
+
+      {/* Legend stays for clarity on what colors mean */}
+      <div className="schedule-legend mt-4 d-flex flex-wrap gap-2">
+          <div className="legend-item"><span className="legend-color regular">Completed</span></div>
+          <div className="legend-item"><span className="legend-color open">Scheduled</span></div>
+          <div className="legend-item"><span className="legend-color sick">Sick</span></div>
+      </div>
     </div>
   );
 }
@@ -1012,7 +1084,10 @@ function DocumentsTab({ client, documents, setDocuments }) {
 // 6. Progress Notes Tab
 function ProgressNotesTab({ client, progressNotes, setProgressNotes, fetchClientDetails }) {
   const [newNote, setNewNote] = useState('');
+  const [editingNoteId, setEditingNoteId] = useState(null);
+  const [editText, setEditText] = useState('');
 
+  // --- Add Note ---
   const handleAddNote = async () => {
     if (!newNote.trim()) {
       alert("Please write a note before publishing.");
@@ -1024,56 +1099,67 @@ function ProgressNotesTab({ client, progressNotes, setProgressNotes, fetchClient
         id: Date.now(),
         note: newNote,
         timestamp: new Date().toISOString(),
-        author: 'Current User' // You can update this with actual user info
+        author: 'Admin User' // Replace with dynamic user data if available
       };
 
       const updatedNotes = [noteEntry, ...progressNotes];
-
-      const response = await fetch(`${API_URL}/clients/${client.client_id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ progress_notes: updatedNotes })
-      });
-
-      if (response.ok) {
-        await fetchClientDetails(client.client_id);
-        setNewNote('');
-        alert("Note published successfully!");
-      } else {
-        alert("Failed to publish note.");
-      }
+      await updateClientNotes(updatedNotes, "Note published!");
+      setNewNote('');
     } catch (error) {
       console.error('Error adding note:', error);
-      alert("Error publishing note.");
     }
   };
 
+  // --- Edit Mode Toggle ---
+  const startEditing = (note) => {
+    setEditingNoteId(note.id);
+    setEditText(note.note);
+  };
+
+  // --- Save Edited Note ---
+  const handleUpdateNote = async () => {
+    try {
+      const updatedNotes = progressNotes.map(n => 
+        n.id === editingNoteId ? { ...n, note: editText, lastModifiedBy: 'Admin' } : n
+      );
+
+      await updateClientNotes(updatedNotes, "Note updated successfully!");
+      setEditingNoteId(null);
+    } catch (error) {
+      console.error('Error updating note:', error);
+    }
+  };
+
+  // --- Delete Note ---
   const handleDeleteNote = async (noteId) => {
     if (!window.confirm("Delete this note?")) return;
-
     try {
       const updatedNotes = progressNotes.filter(n => n.id !== noteId);
-
-      const response = await fetch(`${API_URL}/clients/${client.client_id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ progress_notes: updatedNotes })
-      });
-
-      if (response.ok) {
-        await fetchClientDetails(client.client_id);
-        alert("Note deleted successfully!");
-      } else {
-        alert("Failed to delete note.");
-      }
+      await updateClientNotes(updatedNotes, "Note deleted.");
     } catch (error) {
       console.error('Error deleting note:', error);
-      alert("Error deleting note.");
+    }
+  };
+
+  // --- Helper to hit API ---
+  const updateClientNotes = async (updatedNotesArray, successMsg) => {
+    const response = await fetch(`${API_URL}/clients/${client.client_id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ progress_notes: updatedNotesArray })
+    });
+
+    if (response.ok) {
+      await fetchClientDetails(client.client_id);
+      alert(successMsg);
+    } else {
+      throw new Error("Failed to update notes");
     }
   };
 
   return (
     <div>
+      {/* Input Area */}
       <div className="card border-0 shadow-sm p-4 mb-4">
         <h6 className="mb-3"><i className="bi bi-pencil-square me-2"></i>Add Progress Note</h6>
         <textarea
@@ -1083,37 +1169,74 @@ function ProgressNotesTab({ client, progressNotes, setProgressNotes, fetchClient
           value={newNote}
           onChange={(e) => setNewNote(e.target.value)}
         ></textarea>
-        <button className="btn btn-primary" onClick={handleAddNote}>
+        <button className="btn btn-primary w-auto" onClick={handleAddNote}>
           <i className="bi bi-check-circle me-2"></i>Publish Note
         </button>
       </div>
 
       <div className="mt-4">
-        <h6 className="mb-3"><i className="bi bi-clock-history me-2"></i>Recent Notes</h6>
+        <h6 className="mb-3 text-muted"><i className="bi bi-clock-history me-2"></i>Audit Trail: Progress Notes</h6>
         {progressNotes.length > 0 ? (
           <div className="d-flex flex-column gap-3">
             {progressNotes.map((note) => (
-              <div key={note.id} className="card border-0 shadow-sm p-3">
+              <div key={note.id} className="card border-0 shadow-sm p-3 border-start border-4 border-info">
                 <div className="d-flex justify-content-between align-items-start mb-2">
-                  <div className="small text-muted">
-                    <i className="bi bi-person-circle me-1"></i>
-                    {note.author} • {new Date(note.timestamp).toLocaleString()}
+                  <div>
+                    <span className="badge bg-light text-primary border me-2">
+                      <i className="bi bi-person-fill me-1"></i> {note.author || 'Unknown User'}
+                    </span>
+                    <small className="text-muted">
+                      {new Date(note.timestamp).toLocaleString()}
+                    </small>
                   </div>
-                  <button
-                    className="btn btn-sm btn-outline-danger"
-                    onClick={() => handleDeleteNote(note.id)}
-                  >
-                    <i className="bi bi-trash"></i>
-                  </button>
+                  
+                  <div className="d-flex gap-2">
+                    {editingNoteId !== note.id && (
+                      <button 
+                        className="btn btn-sm btn-outline-primary" 
+                        onClick={() => startEditing(note)}
+                        title="Edit Note"
+                      >
+                        <i className="bi bi-pencil"></i>
+                      </button>
+                    )}
+                    <button
+                      className="btn btn-sm btn-outline-danger"
+                      onClick={() => handleDeleteNote(note.id)}
+                      title="Delete Note"
+                    >
+                      <i className="bi bi-trash"></i>
+                    </button>
+                  </div>
                 </div>
-                <p className="mb-0">{note.note}</p>
+
+                {editingNoteId === note.id ? (
+                  <div className="mt-2">
+                    <textarea 
+                      className="form-control mb-2" 
+                      value={editText} 
+                      onChange={(e) => setEditText(e.target.value)}
+                      rows="3"
+                    />
+                    <div className="d-flex gap-2">
+                      <button className="btn btn-sm btn-success" onClick={handleUpdateNote}>Save</button>
+                      <button className="btn btn-sm btn-secondary" onClick={() => setEditingNoteId(null)}>Cancel</button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="mb-0 text-dark" style={{ whiteSpace: 'pre-wrap' }}>{note.note}</p>
+                )}
+                
+                {note.lastModifiedBy && (
+                  <div className="mt-2 x-small text-muted italic" style={{fontSize: '0.75rem'}}>
+                    * Edited by {note.lastModifiedBy}
+                  </div>
+                )}
               </div>
             ))}
           </div>
         ) : (
-          <div className="text-center py-4 text-muted">
-            No progress notes yet.
-          </div>
+          <div className="text-center py-4 text-muted border rounded">No progress notes found.</div>
         )}
       </div>
     </div>

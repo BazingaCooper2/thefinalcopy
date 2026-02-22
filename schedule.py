@@ -116,7 +116,8 @@ def schedule():
 
     clients      = supabase.table("client").select("*").execute().data      or []
     employees    = employees_q.execute().data                                or []
-    all_shifts   = supabase.table("shift").select("*").execute().data       or []
+    all_shifts = supabase.table("shift").select("*").execute().data or []
+    print(f"DEBUG: Found {len(all_shifts)} shifts. IDs: {[s['shift_id'] for s in all_shifts]}")
     daily_shifts = supabase.table("daily_shift").select("*").execute().data or []
     all_leaves   = supabase.table("leaves").select("*").execute().data      or []
 
@@ -232,72 +233,58 @@ def edit_schedule():
     s_id = data.get('shift_id')
     emp_id = data.get('emp_id')
     shift_date = data.get('shift_date')
+    client_id = data.get('client_id')
+    
+    # FIX 1: Capture the shift_type from the frontend payload
+    requested_shift_type = data.get('shift_type', 'regular') 
     
     def flexible_parse(t_str):
+        if not t_str: return None
         return t_str.replace('T', ' ').split('.')[0] # Standardizes to YYYY-MM-DD HH:MM:SS
 
     full_start = flexible_parse(data['shift_start_time'])
     full_end = flexible_parse(data['shift_end_time'])
 
-    # --- NEW CAPACITY ENFORCEMENT ---
+    # --- 1. OUTREACH TRAVEL GUARD ---
+    if client_id and requested_shift_type == "travel":
+        client_res = supabase.table("client").select("service_type").eq("client_id", client_id).single().execute()
+        client_service = client_res.data.get("service_type", "") if client_res.data else ""
+        if client_service.lower() != "outreach":
+            return jsonify({"error": f"Travel blocks only for Outreach. Client location: {client_service}"}), 400
+
+    # --- 2. CAPACITY ENFORCEMENT ---
     if emp_id and shift_date:
-        # 1. Calculate duration of the incoming shift update
         start_dt = parse_datetime(data['shift_start_time'])
         end_dt = parse_datetime(data['shift_end_time'])
-        
         if start_dt and end_dt:
             new_duration_hrs = (end_dt - start_dt).total_seconds() / 3600
-            
-            # 2. Calculate existing hours for this employee on this day
-            # EXCLUDING the current shift (s_id) to avoid double-counting
-            existing_shifts = supabase.table("shift") \
-                .select("shift_start_time, shift_end_time") \
-                .eq("emp_id", emp_id) \
-                .eq("date", shift_date) \
-                .neq("shift_id", s_id) \
-                .execute()
-            
-            total_existing_hrs = 0
-            for s in existing_shifts.data:
-                s_start = parse_datetime(s["shift_start_time"])
-                s_end = parse_datetime(s["shift_end_time"])
-                if s_start and s_end:
-                    total_existing_hrs += (s_end - s_start).total_seconds() / 3600
-            
-            # 3. Block update if it exceeds 15 hours
-            emp = supabase.table("employee_final") \
-                .select("max_daily_cap, max_weekly_cap") \
-                .eq("emp_id", emp_id) \
-                .single() \
-                .execute()
-
+            emp = supabase.table("employee_final").select("max_daily_cap").eq("emp_id", emp_id).single().execute()
             daily_cap = float(emp.data.get("max_daily_cap") or 15)
-
-            weekly_cap = emp.data["max_weekly_cap"] if emp.data["max_weekly_cap"] else 48
-
-            existing_daily = get_daily_total_hours(emp_id, shift_date)
-            existing_weekly = get_weekly_total_hours(emp_id, shift_date)
-
+            existing_daily = get_daily_total_hours(emp_id, shift_date) 
             if (existing_daily + new_duration_hrs) > daily_cap:
-                return jsonify({"error": "Daily capacity exceeded"}), 400
+                return jsonify({"error": f"Daily capacity exceeded. Limit: {daily_cap}h"}), 400
 
-            if (existing_weekly + new_duration_hrs) > weekly_cap:
-                return jsonify({"error": "Weekly capacity exceeded"}), 400
-    # --------------------------------
-
-    # Update the shift table with ALL fields
-    supabase.table("shift").update({
+    # --- 3. FINAL UPDATE (POINTING TO TEST TABLE) ---
+    update_payload = {
         "shift_start_time": full_start,
         "shift_end_time": full_end,
         "emp_id": emp_id,
+        "client_id": client_id,
         "date": shift_date,
-        "shift_status": "Scheduled"
-    }).eq("shift_id", s_id).execute()
+        "shift_status": data.get("shift_status", "Scheduled"),
+        "shift_type": requested_shift_type # FIX: This overrides the 'regular' DB default
+    }
 
-    # Sync the changes to the daily view
+    # REDIRECTED TO TEST TABLE
+    result = supabase.table("shift").update(update_payload).eq("shift_id", s_id).execute()
+
+    if not result.data:
+        return jsonify({"error": "Update failed. Shift ID may be invalid in shift."}), 404
+
+    # FIX 2: Sync using the TEST RPC
     supabase.rpc("update_daily_shifts", {}).execute()
     
-    return jsonify({"status": "success", "message": "Shift updated"})
+    return jsonify({"status": "success", "message": "Test Shift updated successfully in shift"})
 
 @app.route('/delete_shift', methods=['POST'])
 def delete_shift():
@@ -307,13 +294,13 @@ def delete_shift():
     if not s_id:
         return jsonify({"error": "No shift_id provided"}), 400
     
-    # Delete from Supabase
+    # 1. Delete from shift table
     supabase.table("shift").delete().eq("shift_id", s_id).execute()
     
-    # Sync the changes to the daily view
+    # 2. Sync using the TEST sync function
     supabase.rpc("update_daily_shifts", {}).execute()
     
-    return jsonify({"message": "Shift deleted successfully"}), 200
+    return jsonify({"message": "Test Shift deleted successfully from shift"}), 200
 
 @app.route('/newShiftSchedule', methods=['GET'])
 def newShiftSchedule():
@@ -1272,7 +1259,7 @@ def get_clients():
             care_mgmt, doctor, nurse, coordinator_notes,
             individual_service, tasks, instructions, payroll_data,
             emergency_contacts, primary_diagnosis, medical_notes,
-            wheelchair_user, has_catheter, requires_oxygen, progress_notes
+            wheelchair_user, has_catheter, requires_oxygen, progress_notes, administrative_notes
         """).execute()
 
         return jsonify({
@@ -1295,7 +1282,7 @@ def get_client_by_id(client_id):
             care_mgmt, doctor, nurse, coordinator_notes,
             individual_service, tasks, instructions, payroll_data,
             emergency_contacts, primary_diagnosis, medical_notes,
-            wheelchair_user, has_catheter, requires_oxygen, progress_notes
+            wheelchair_user, has_catheter, requires_oxygen, progress_notes, administrative_notes
         """).eq("client_id", client_id).single().execute()
 
         return jsonify({
@@ -2734,6 +2721,50 @@ def get_weekly_total_hours(emp_id, any_date_str):
 
     return total
 
+@app.route('/get_client_shifts', methods=['GET'])
+def get_client_shifts():
+    """
+    Fetches all shifts associated with a specific client_id.
+    Matches the schema of public.shift and joins employee names.
+    """
+    try:
+        client_id = request.args.get("client_id")
+        if not client_id:
+            return jsonify({"error": "client_id is required"}), 400
+
+        # Query the shift table and join employee details to show who is visiting
+        # We use .select() to pick specific columns to match your SQL query results
+        response = supabase.table("shift").select("""
+            shift_id,
+            date,
+            shift_start_time,
+            shift_end_time,
+            shift_status,
+            shift_type,
+            emp_id
+        """).eq("client_id", client_id).order("date").execute()
+
+        shifts = response.data or []
+        
+        # Optionally: Fetch employee names for these shifts
+        emp_ids = list({s["emp_id"] for s in shifts if s.get("emp_id")})
+        employees = {}
+        if emp_ids:
+            emp_data = supabase.table("employee_final").select("emp_id, first_name, last_name").in_("emp_id", emp_ids).execute()
+            employees = {e["emp_id"]: f"{e['first_name']} {e['last_name'][0]}." for e in emp_data.data}
+
+        # Enrich the shift data with staff names for the frontend display
+        for s in shifts:
+            s["staff_name"] = employees.get(s["emp_id"], "Unassigned")
+
+        return jsonify({
+            "success": True,
+            "shifts": shifts
+        }), 200
+
+    except Exception as e:
+        print(f"GET CLIENT SHIFTS ERROR: {e}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/add_client_shift", methods=["POST"])
 def add_client_shift():
@@ -2742,63 +2773,54 @@ def add_client_shift():
         emp_id = data.get('emp_id')
         shift_date = data.get("shift_date")
         client_id = data.get('client_id')
-        requested_shift_type = data.get("shift_type", "regular") # Get the type from frontend
+        requested_shift_type = data.get("shift_type", "regular")
 
         # --- 1. OUTREACH TRAVEL GUARD ---
         if client_id:
             client_res = supabase.table("client").select("service_type").eq("client_id", client_id).single().execute()
             client_service = client_res.data.get("service_type", "") if client_res.data else ""
-            
-            # Block travel shift if service is not Outreach
             if requested_shift_type == "travel" and client_service.lower() != "outreach":
-                return jsonify({
-                    "error": f"Travel blocks are only allowed for Outreach services. This client is registered under: {client_service}"
-                }), 400
-        # --------------------------------
+                return jsonify({"error": f"Travel blocks only for Outreach. Client location: {client_service}"}), 400
 
-        # --- NEW CAPACITY CHECK ---
+        # --- 2. CAPACITY CHECK ---
         if emp_id:
-            new_start = parse_datetime(data['shift_start_time'])
-            new_end = parse_datetime(data['shift_end_time'])
-            
-            if new_start and new_end:
-                new_duration_hrs = (new_end - new_start).total_seconds() / 3600
+            start_dt = parse_datetime(data['shift_start_time'])
+            end_dt = parse_datetime(data['shift_end_time'])
+            if start_dt and end_dt:
+                new_duration_hrs = (end_dt - start_dt).total_seconds() / 3600
+                # Ensure we check the capacity against the table we are actually using (shift)
                 existing_hours = get_daily_total_hours(int(emp_id), shift_date)
-                
-                emp = supabase.table("employee_final") \
-                    .select("max_daily_cap") \
-                    .eq("emp_id", emp_id) \
-                    .single() \
-                    .execute()
-
+                emp = supabase.table("employee_final").select("max_daily_cap").eq("emp_id", emp_id).single().execute()
                 daily_cap = float(emp.data.get("max_daily_cap") or 15)
-
-
                 if (existing_hours + new_duration_hrs) > daily_cap:
-                    return jsonify({
-                        "error": f"Maximum shifts allocated: Employee is already at {existing_hours:.1f}h. This addition would exceed the 15h daily limit."
-                    }), 400
-        # --------------------------
+                    return jsonify({"error": f"Daily capacity exceeded. Limit: {daily_cap}h"}), 400
 
-        # --- INSERT PAYLOAD ---
-        # Note: Ensure your Supabase 'shift' table has a column named 'shift_type'
+        # --- 3. INSERT (POINTING TO TEST TABLE) ---
+        # IMPORTANT: Keep the 'T' and add 'Z' for UTC if your DB is set to Timestamptz.
+        # This matches the ISO strings your frontend is looking for.
         insert_payload = {
             "client_id": int(client_id),
             "emp_id": int(emp_id) if emp_id else None,
-            "shift_start_time": data['shift_start_time'].replace('T', ' '),
-            "shift_end_time": data['shift_end_time'].replace('T', ' '),
+            "shift_start_time": f"{data['shift_start_time']}Z" if 'Z' not in data['shift_start_time'] else data['shift_start_time'],
+            "shift_end_time": f"{data['shift_end_time']}Z" if 'Z' not in data['shift_end_time'] else data['shift_end_time'],
             "date": shift_date,
             "shift_status": data.get("shift_status", "Scheduled"),
-            "shift_type": requested_shift_type # Save the specific type (travel/outreach)
+            "shift_type": requested_shift_type 
         }
 
         result = supabase.table("shift").insert(insert_payload).execute()
         
         if not result.data:
-             return jsonify({"error": "Database rejection. Check your data constraints."}), 500
+             return jsonify({"error": "Database rejection in shift."}), 500
 
+        # 4. Refresh Daily Shifts (ensure RPC uses test table)
         supabase.rpc("update_daily_shifts", {}).execute()
-        return jsonify({"message": "Client shift added successfully"}), 200
+        
+        return jsonify({
+            "status": "success",
+            "message": "Shift added to test table",
+            "data": result.data[0]
+        }), 200
 
     except Exception as e:
         print(f"ERROR in /add_client_shift: {str(e)}")
