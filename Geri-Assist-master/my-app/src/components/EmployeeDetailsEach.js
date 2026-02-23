@@ -10,6 +10,23 @@ import EmployeeEmploymentSettings from "./EmployeeSettings.js";
 import NotificationSettings from "./EmployeeNotification.js";
 import API_URL from '../config/api';
 
+const shiftCodeTimes = {
+    // Standard Day / Evening shifts (Adjust these hours to your company's policy)
+    "d":     { start: "08:00", end: "16:00" },
+    "D":     { start: "08:00", end: "16:00" },
+    "e":     { start: "16:00", end: "00:00" }, // Evening shift
+    
+    // Day variations (Guessing based on typical patterns, adjust as needed)
+    "D1":    { start: "07:00", end: "15:00" },
+    "D2":    { start: "09:00", end: "17:00" },
+    
+    // Explicit hour codes mapped directly to 24-hour time
+    "7-12n": { start: "07:00", end: "12:00" }, // 7:00 AM to 12:00 Noon
+    "8-12n": { start: "08:00", end: "12:00" }, // 8:00 AM to 12:00 Noon
+    "7-2a":  { start: "07:00", end: "14:00" }, // 7:00 AM to 2:00 PM
+    "7-2b":  { start: "07:00", end: "14:00" }, // 7:00 AM to 2:00 PM 
+};
+
 const EmployeeDetailsEach = () => {
     const { id } = useParams();
 
@@ -34,15 +51,30 @@ const EmployeeDetailsEach = () => {
     const hours = generateHours();
 
     // ---------------- UTILITIES ----------------
+    
+    function toLocalISODate(d) {
+        const date = new Date(d);
+        return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    }
+
     function toMinutesOfDay(str) {
         if (!str) return 0;
-        let timePart = str.includes("T") ? str.split("T")[1] : str.includes(" ") ? str.split(" ")[1] : str;
-        const [h, m] = timePart.split(":").map(Number);
+        let timePart = str;
+        if (str.includes("T")) timePart = str.split("T")[1];
+        else if (str.includes(" ")) timePart = str.split(" ")[1];
+        
+        timePart = timePart.replace("Z", "").split("+")[0];
+        
+        const parts = timePart.split(":");
+        const h = parseInt(parts[0], 10);
+        const m = parseInt(parts[1], 10);
+        
+        if (isNaN(h) || isNaN(m)) return 0;
         return h * 60 + m;
     }
 
     function getPosition(timeStr) {
-        return toMinutesOfDay(timeStr) - 7 * 60;
+        return Math.max(0, toMinutesOfDay(timeStr) - 7 * 60);
     }
 
     function changeWeek(amount) {
@@ -51,16 +83,17 @@ const EmployeeDetailsEach = () => {
         setWeekStart(newDate);
     }
 
+    // UPDATED: Now goes up to 23:00 to prevent bottom-cutoff issues
     function generateHours() {
         let arr = [];
-        for (let h = 7; h <= 22; h++) arr.push(`${String(h).padStart(2, "0")}:00`);
+        for (let h = 7; h <= 23; h++) arr.push(`${String(h).padStart(2, "0")}:00`);
         return arr;
     }
 
     function getWeekStart(d) {
         const date = new Date(d);
         const day = date.getDay();
-        return new Date(date.setDate(date.getDate() - day));
+        return new Date(date.getFullYear(), date.getMonth(), date.getDate() - day);
     }
 
     function getWeekDays(start) {
@@ -89,26 +122,32 @@ const EmployeeDetailsEach = () => {
 
     // ---------------- DAY COLUMN ----------------
     function DayColumn({ day, shifts }) {
-        const dayStr = day.toISOString().slice(0, 10);
-        const todaysShifts = shifts.filter(s => s.shift_start_time.slice(0, 10) === dayStr);
+        const dayStr = toLocalISODate(day); 
+        
+        const todaysShifts = shifts.filter(s => {
+            const shiftDate = s.date || (s.shift_start_time ? s.shift_start_time.split("T")[0].split(" ")[0] : null);
+            return shiftDate === dayStr;
+        });
+
         return (
             <div className="ed-column-container">
                 {todaysShifts.map((shift) => {
                     const top = getPosition(shift.shift_start_time);
-                    const height = getPosition(shift.shift_end_time) - top;
+                    const height = Math.max(15, getPosition(shift.shift_end_time) - top); 
+                    
                     return (
                         <OverlayTrigger
                             key={shift.shift_id}
                             placement="top"
                             overlay={
                                 <Tooltip>
-                                    {shift.shift_start_time.slice(11, 16)} – {shift.shift_end_time.slice(11, 16)}
+                                    {shift.shift_start_time?.slice(11, 16)} – {shift.shift_end_time?.slice(11, 16)}
                                     <br />Client ID: {shift.client_id}
                                 </Tooltip>
                             }>
                             <div
                                 className="ed-shift-block"
-                                style={{ top, height, zIndex: 10, position: "absolute", cursor: "pointer" }}
+                                style={{ top: `${top}px`, height: `${height}px`, zIndex: 10, position: "absolute", cursor: "pointer" }}
                             />
                         </OverlayTrigger>
                     );
@@ -124,13 +163,10 @@ const EmployeeDetailsEach = () => {
         </div>
     );
 
-    // Derived values
     const initials = `${employee.first_name?.[0] || ""}${employee.last_name?.[0] || ""}`;
     const fullName = `${employee.first_name} ${employee.last_name}`;
     const empType = employee.status || "Full Time";
-    const typeColor = empType === "Full Time" ? "#10b981" : empType === "Part Time" ? "#3b82f6" : "#f59e0b";
     const statusColor = employee.Employee_status === "Active" ? "#10b981" : "#ef4444";
-    const weeklyCapPct = employee.max_weekly_cap ? Math.min(Math.round((shifts.length * 4) / employee.max_weekly_cap * 100), 100) : 0;
 
     const tabs = [
         { key: "overview", label: "Overview", icon: "bi-person-lines-fill" },
@@ -163,11 +199,9 @@ const EmployeeDetailsEach = () => {
                     --ed-radius: 14px;
                     --ed-radius-sm: 8px;
                     --ed-shadow: 0 2px 12px rgba(79,70,229,0.07);
-                    --ed-shadow-lg: 0 8px 32px rgba(79,70,229,0.12);
                     font-family: 'DM Sans', 'Segoe UI', sans-serif;
                 }
 
-                /* ── Loading ───────────────────────────────────────── */
                 .ed-loading {
                     display: flex; flex-direction: column; align-items: center;
                     justify-content: center; min-height: 60vh; gap: 16px;
@@ -181,7 +215,6 @@ const EmployeeDetailsEach = () => {
                 }
                 @keyframes ed-spin { to { transform: rotate(360deg); } }
 
-                /* ── Layout ────────────────────────────────────────── */
                 .ed-wrap { max-width: 1200px; margin: 0 auto; padding: 28px 20px; }
 
                 /* ── Profile Card ──────────────────────────────────── */
@@ -196,7 +229,6 @@ const EmployeeDetailsEach = () => {
                 .ed-profile-header {
                     background: linear-gradient(135deg, #1e1b4b 0%, #312e81 60%, #4f46e5 100%);
                     padding: 32px 32px 0;
-                    position: relative;
                 }
                 .ed-avatar-row {
                     display: flex; align-items: flex-end; gap: 20px;
@@ -209,16 +241,13 @@ const EmployeeDetailsEach = () => {
                     display: flex; align-items: center; justify-content: center;
                     font-size: 1.6rem; font-weight: 700; color: white;
                     letter-spacing: -1px; flex-shrink: 0;
-                    backdrop-filter: blur(8px);
                 }
                 .ed-profile-info { flex: 1; padding-bottom: 20px; }
                 .ed-profile-name {
                     font-size: 1.4rem; font-weight: 700; color: white;
                     margin: 0 0 6px; letter-spacing: -0.3px;
                 }
-                .ed-profile-meta {
-                    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-                }
+                .ed-profile-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
                 .ed-badge {
                     display: inline-flex; align-items: center; gap: 5px;
                     padding: 3px 10px; border-radius: 20px; font-size: 0.72rem;
@@ -228,16 +257,6 @@ const EmployeeDetailsEach = () => {
                     background: rgba(255,255,255,0.15);
                     color: rgba(255,255,255,0.9);
                     border: 1px solid rgba(255,255,255,0.2);
-                }
-                .ed-badge-status {
-                    background: rgba(16,185,129,0.2);
-                    color: #6ee7b7;
-                    border: 1px solid rgba(16,185,129,0.3);
-                }
-                .ed-badge-inactive {
-                    background: rgba(239,68,68,0.2);
-                    color: #fca5a5;
-                    border: 1px solid rgba(239,68,68,0.3);
                 }
                 .ed-sub-info {
                     margin-top: 8px; font-size: 0.8rem; color: rgba(255,255,255,0.55);
@@ -256,18 +275,12 @@ const EmployeeDetailsEach = () => {
                     color: rgba(255,255,255,0.5); cursor: pointer;
                     border-bottom: 2px solid transparent; transition: all 0.2s;
                     background: none; border-left: none; border-right: none; border-top: none;
-                    white-space: nowrap;
                 }
-                .ed-tab:hover { color: rgba(255,255,255,0.8); }
-                .ed-tab.active {
-                    color: white;
-                    border-bottom-color: #818cf8;
-                }
+                .ed-tab.active { color: white; border-bottom-color: #818cf8; }
 
-                /* ── Tab Body ──────────────────────────────────────── */
                 .ed-tab-body { padding: 28px 32px; }
 
-                /* ── Stat Cards ────────────────────────────────────── */
+                /* ── Stat Cards & Info ─────────────────────────────── */
                 .ed-stats-row {
                     display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
                     gap: 14px; margin-bottom: 24px;
@@ -280,68 +293,43 @@ const EmployeeDetailsEach = () => {
                 }
                 .ed-stat-label {
                     font-size: 0.72rem; font-weight: 600; text-transform: uppercase;
-                    letter-spacing: 0.6px; color: var(--ed-muted); margin-bottom: 6px;
+                    color: var(--ed-muted); margin-bottom: 6px;
                 }
                 .ed-stat-value {
                     font-size: 1.25rem; font-weight: 700; color: var(--ed-text);
-                    letter-spacing: -0.5px;
                 }
                 .ed-stat-sub { font-size: 0.75rem; color: var(--ed-muted); margin-top: 2px; }
 
-                /* ── Info Grid ─────────────────────────────────────── */
                 .ed-info-grid {
                     display: grid; grid-template-columns: 1fr 1fr;
-                    gap: 0; border: 1px solid var(--ed-border);
-                    border-radius: var(--ed-radius-sm); overflow: hidden;
+                    border: 1px solid var(--ed-border); border-radius: var(--ed-radius-sm);
                 }
-                .ed-info-row {
-                    display: contents;
-                }
+                .ed-info-row { display: contents; }
                 .ed-info-row > div {
-                    padding: 12px 16px;
-                    border-bottom: 1px solid var(--ed-border);
+                    padding: 12px 16px; border-bottom: 1px solid var(--ed-border);
                     font-size: 0.83rem;
                 }
                 .ed-info-row:last-child > div { border-bottom: none; }
-                .ed-info-row > div:first-child {
-                    border-right: 1px solid var(--ed-border);
-                }
+                .ed-info-row > div:first-child { border-right: 1px solid var(--ed-border); }
                 .ed-info-key {
                     font-weight: 600; color: var(--ed-muted); font-size: 0.75rem;
-                    text-transform: uppercase; letter-spacing: 0.4px;
-                    margin-bottom: 2px;
+                    text-transform: uppercase; margin-bottom: 2px;
                 }
-                .ed-info-val {
-                    color: var(--ed-text); font-weight: 500;
-                }
+                .ed-info-val { color: var(--ed-text); font-weight: 500; }
 
-                /* ── Section heading ───────────────────────────────── */
                 .ed-section-title {
                     font-size: 0.8rem; font-weight: 700; text-transform: uppercase;
-                    letter-spacing: 0.7px; color: var(--ed-muted);
-                    margin: 24px 0 12px; display: flex; align-items: center; gap: 8px;
+                    color: var(--ed-muted); margin: 24px 0 12px; display: flex; align-items: center; gap: 8px;
                 }
-                .ed-section-title::after {
-                    content: ''; flex: 1; height: 1px; background: var(--ed-border);
-                }
+                .ed-section-title::after { content: ''; flex: 1; height: 1px; background: var(--ed-border); }
 
-                /* ── Cap bar ───────────────────────────────────────── */
-                .ed-cap-bar-wrap { margin-top: 8px; }
-                .ed-cap-bar-labels {
-                    display: flex; justify-content: space-between;
-                    font-size: 0.75rem; color: var(--ed-muted); margin-bottom: 5px;
-                }
                 .ed-cap-track {
-                    height: 7px; background: var(--ed-border);
-                    border-radius: 99px; overflow: hidden;
+                    height: 7px; background: var(--ed-border); border-radius: 99px; overflow: hidden;
                 }
                 .ed-cap-fill {
                     height: 100%; border-radius: 99px;
-                    transition: width 0.4s ease;
                     background: linear-gradient(90deg, #4f46e5, #818cf8);
                 }
-
-                /* ── Dept chips ────────────────────────────────────── */
                 .ed-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
                 .ed-chip {
                     padding: 4px 12px; border-radius: 20px; font-size: 0.75rem;
@@ -349,7 +337,7 @@ const EmployeeDetailsEach = () => {
                     border: 1px solid #c4b5fd;
                 }
 
-                /* ── Schedule Grid ─────────────────────────────────── */
+                /* ── Schedule Grid (UPDATED FOR PERFECT ALIGNMENT) ─── */
                 .ed-sched-controls {
                     display: flex; align-items: center; gap: 12px;
                     margin-bottom: 20px; flex-wrap: wrap;
@@ -357,43 +345,91 @@ const EmployeeDetailsEach = () => {
                 .ed-sched-controls select {
                     padding: 6px 10px; border: 1px solid var(--ed-border);
                     border-radius: var(--ed-radius-sm); font-size: 0.8rem;
-                    background: var(--ed-surface); color: var(--ed-text);
                 }
-                .ed-week-nav {
-                    display: flex; align-items: center; gap: 10px; margin-left: auto;
-                }
+                .ed-week-nav { display: flex; align-items: center; gap: 10px; margin-left: auto; }
                 .ed-week-btn {
                     width: 32px; height: 32px; border-radius: 8px;
                     border: 1px solid var(--ed-border); background: var(--ed-surface);
                     cursor: pointer; display: flex; align-items: center; justify-content: center;
-                    font-size: 0.75rem; color: var(--ed-muted);
-                    transition: all 0.15s;
                 }
-                .ed-week-btn:hover { background: var(--ed-accent); color: white; border-color: var(--ed-accent); }
-                .ed-week-label { font-size: 0.82rem; font-weight: 600; color: var(--ed-text); white-space: nowrap; }
+                .ed-week-btn:hover { background: var(--ed-accent); color: white; }
+                .ed-week-label { font-size: 0.82rem; font-weight: 600; color: var(--ed-text); }
 
-                .ed-schedule-grid { display: flex; flex-direction: column; border: 1px solid var(--ed-border); border-radius: var(--ed-radius-sm); overflow: hidden; }
-                .ed-schedule-header { display: flex; border-bottom: 1px solid var(--ed-border); background: var(--ed-surface2); }
-                .ed-time-col-h { width: 56px; flex-shrink: 0; }
-                .ed-day-col-header {
-                    flex: 1; min-width: 0; padding: 8px 4px;
-                    text-align: center; font-size: 0.7rem; font-weight: 600;
-                    color: var(--ed-muted); border-left: 1px solid var(--ed-border);
-                    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+                /* Parent wrapper handles the scroll entirely now */
+                .ed-schedule-grid {
+                    display: flex; 
+                    flex-direction: column; 
+                    border: 1px solid var(--ed-border); 
+                    border-radius: var(--ed-radius-sm); 
+                    overflow-x: auto; 
+                    background: var(--ed-surface);
                 }
-                .ed-schedule-body { display: flex; overflow-x: auto; }
+                
+                .ed-schedule-header { 
+                    display: flex; 
+                    border-bottom: 1px solid var(--ed-border); 
+                    background: var(--ed-surface2); 
+                    min-width: max-content; 
+                }
+                
+                .ed-time-col-h { 
+                    width: 56px; 
+                    flex-shrink: 0; 
+                }
+                
+                .ed-day-col-header {
+                    flex: 1 1 90px;
+                    min-width: 90px;
+                    padding: 8px 4px;
+                    text-align: center; 
+                    font-size: 0.7rem; 
+                    font-weight: 600;
+                    color: var(--ed-muted); 
+                    border-left: 1px solid var(--ed-border);
+                    white-space: nowrap; 
+                    overflow: hidden; 
+                    text-overflow: ellipsis;
+                }
+                
+                .ed-schedule-body { 
+                    display: flex; 
+                    min-width: max-content; 
+                }
+                
                 .ed-time-col {
-                    width: 56px; flex-shrink: 0;
+                    width: 56px; 
+                    flex-shrink: 0;
                     border-right: 1px solid var(--ed-border);
                 }
+                
                 .ed-time-cell {
-                    height: 60px; padding: 2px 6px; font-size: 0.65rem;
-                    color: var(--ed-muted); border-bottom: 1px solid var(--ed-border);
-                    display: flex; align-items: flex-start; justify-content: flex-end;
+                    height: 60px; 
+                    padding: 2px 6px; 
+                    font-size: 0.65rem;
+                    color: var(--ed-muted); 
+                    border-bottom: 1px solid var(--ed-border);
+                    display: flex; 
+                    align-items: flex-start; 
+                    justify-content: flex-end;
+                    box-sizing: border-box;
                 }
-                .ed-day-col { flex: 1; min-width: 80px; border-left: 1px solid var(--ed-border); }
-                .ed-day-grid { position: relative; height: 900px; }
+                
+                .ed-day-col { 
+                    flex: 1 1 90px; 
+                    min-width: 90px; 
+                    border-left: 1px solid var(--ed-border); 
+                }
+                
+                .ed-day-grid { 
+                    position: relative; 
+                    height: 1020px; 
+                    /* Adds subtle background tracking lines */
+                    background-image: linear-gradient(to bottom, var(--ed-border) 1px, transparent 1px);
+                    background-size: 100% 60px;
+                }
+                
                 .ed-column-container { position: absolute; inset: 0; }
+                
                 .ed-shift-block {
                     position: absolute; left: 2px; right: 2px;
                     background: linear-gradient(135deg, #4f46e5, #818cf8);
@@ -401,6 +437,7 @@ const EmployeeDetailsEach = () => {
                     transition: opacity 0.15s;
                 }
                 .ed-shift-block:hover { opacity: 1; }
+                
                 .ed-daily-shift {
                     position: absolute; left: 2px; right: 2px;
                     background: linear-gradient(135deg, #059669, #34d399);
@@ -408,12 +445,11 @@ const EmployeeDetailsEach = () => {
                     color: white; padding: 2px 4px; overflow: hidden;
                 }
 
-                /* ── Employment sidebar layout ─────────────────────── */
+                /* ── Employment sidebar ────────────────────────────── */
                 .ed-emp-layout { display: flex; gap: 0; }
                 .ed-emp-sidebar {
                     width: 200px; flex-shrink: 0;
-                    border-right: 1px solid var(--ed-border);
-                    padding: 4px 0;
+                    border-right: 1px solid var(--ed-border); padding: 4px 0;
                 }
                 .ed-emp-sidebar-item {
                     display: flex; align-items: center; gap: 9px;
@@ -423,10 +459,8 @@ const EmployeeDetailsEach = () => {
                 }
                 .ed-emp-sidebar-item:hover { color: var(--ed-text); background: var(--ed-surface2); }
                 .ed-emp-sidebar-item.active {
-                    color: var(--ed-accent); background: #eef2ff;
-                    border-left-color: var(--ed-accent);
+                    color: var(--ed-accent); background: #eef2ff; border-left-color: var(--ed-accent);
                 }
-                .ed-emp-sidebar-item i { font-size: 0.85rem; }
                 .ed-emp-content { flex: 1; padding: 8px 24px; min-width: 0; }
             `}</style>
 
@@ -688,7 +722,7 @@ const EmployeeDetailsEach = () => {
                                             ))}
                                         </div>
                                         {days.map(day => {
-                                            const dateKey = day.toISOString().slice(0, 10);
+                                            const dateKey = toLocalISODate(day);
                                             return (
                                                 <div className="ed-day-col" key={dateKey}>
                                                     <div className="ed-day-grid">
@@ -696,15 +730,18 @@ const EmployeeDetailsEach = () => {
                                                         {dailyShift
                                                             .filter(ds => ds.shift_date === dateKey)
                                                             .map(ds => {
-                                                                const top = getPosition(ds.shift_start_time);
-                                                                const height = getPosition(ds.shift_end_time) - top;
+                                                                const times = shiftCodeTimes[ds.shift_code] || { start: "09:00", end: "17:00" };
+                                                                
+                                                                const top = getPosition(times.start);
+                                                                const height = Math.max(15, getPosition(times.end) - top);
+                                                                
                                                                 return (
                                                                     <div
-                                                                        key={`daily-${ds.shift_id}`}
+                                                                        key={`daily-${ds.schedule_id}`}
                                                                         className="ed-daily-shift"
-                                                                        style={{ top, height }}>
-                                                                        <div style={{ fontWeight: 700 }}>Daily</div>
-                                                                        <div>{ds.shift_start_time.slice(11, 16)}–{ds.shift_end_time.slice(11, 16)}</div>
+                                                                        style={{ top: `${top}px`, height: `${height}px` }}>
+                                                                        <div style={{ fontWeight: 700 }}>{ds.shift_code || "Daily"}</div>
+                                                                        <div>{times.start}–{times.end}</div>
                                                                     </div>
                                                                 );
                                                             })}

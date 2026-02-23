@@ -11,9 +11,10 @@ export default function ShiftEditModal({
     onDelete, 
     allShifts 
 }) {
+    // FIX 1: Reverted 'id' back to 'client_id' so it matches your Shift table and Backend API payload
     const [formData, setFormData] = useState({
         emp_id: "",
-        client_id: "",
+        client_id: "", 
         shift_date: "",
         start_time: "",
         end_time: "",
@@ -39,15 +40,16 @@ export default function ShiftEditModal({
         return hours * 60 + minutes;
     };
 
-    const selectedClient = clients?.find(c => Number(c.client_id) === Number(formData.client_id));
-    const isOutreachClient = selectedClient?.service_type?.toLowerCase() === "outreach";
+    // Find client using 'id' from staging, matching against 'client_id' in form state
+    const selectedClient = clients?.find(c => Number(c.id) === Number(formData.client_id));
+    const isOutreachClient = selectedClient?.client_ailment_type?.toLowerCase() === "outreach";
 
     useEffect(() => {
         if (shift && isOpen) {
             if (shift.isNew) {
                 setFormData({
                     emp_id: shift.emp_id || "",
-                    client_id: "",
+                    client_id: shift.client_id || "", // Reverted to shift.client_id
                     shift_date: getDateString(shift.shift_date),
                     start_time: getTimeString(shift.shift_start_time) || "08:00",
                     end_time: getTimeString(shift.shift_end_time) || "09:00",
@@ -56,7 +58,7 @@ export default function ShiftEditModal({
             } else {
                 setFormData({
                     emp_id: shift.emp_id || "",
-                    client_id: shift.client_id || "",
+                    client_id: shift.client_id || "", // Reverted to shift.client_id
                     shift_date: getDateString(shift.shift_date || shift.date || shift.shift_start_time),
                     start_time: getTimeString(shift.shift_start_time),
                     end_time: getTimeString(shift.shift_end_time),
@@ -119,10 +121,12 @@ export default function ShiftEditModal({
         setFormData(prev => {
             const newData = { ...prev, [name]: value };
 
-            // Reset shift_type to 'regular' if client changes to non-outreach while 'travel' was selected
-            if (name === "client_id") {
-                const nextClient = clients?.find(c => Number(c.client_id) === Number(value));
-                if (nextClient?.service_type?.toLowerCase() !== "outreach" && prev.shift_type === "travel") {
+            if (name === "client_id") { // FIX 2: Check against client_id
+                // Find client by 'id' from staging
+                const nextClient = clients?.find(c => Number(c.id) === Number(value));
+                
+                // Check 'client_ailment_type' instead of 'service_type'
+                if (nextClient?.client_ailment_type?.toLowerCase() !== "outreach" && prev.shift_type === "travel") {
                     newData.shift_type = "regular";
                 }
             }
@@ -131,15 +135,16 @@ export default function ShiftEditModal({
     };
 
     const handleSave = () => {
+        // FIX 3: Stricter check before converting to Number
+        if (!formData.client_id || formData.client_id === "") return alert("Please select a Client.");
+        if (!formData.emp_id || formData.emp_id === "") return alert("Please select an Employee.");
+
         const selectedClientId = Number(formData.client_id);
         const selectedEmpId = Number(formData.emp_id);
 
-        if (!selectedClientId) return alert("Please select a Client.");
-        if (!selectedEmpId) return alert("Please select an Employee.");
-
         const payload = {
             shift_id: shift.shift_id,
-            client_id: selectedClientId,
+            client_id: selectedClientId, // Sent as client_id for your backend
             emp_id: selectedEmpId,
             shift_start_time: `${formData.shift_date}T${formData.start_time}:00`,
             shift_end_time: `${formData.shift_date}T${formData.end_time}:00`,
@@ -180,15 +185,16 @@ export default function ShiftEditModal({
                 <div style={{ marginBottom: "1rem" }}>
                     <label style={{ display: "block", fontSize: "0.875rem", fontWeight: "bold", marginBottom: "0.25rem" }}>Client</label>
                     <select
-                        name="client_id"
+                        name="client_id" // FIX 4: Bind to client_id
                         value={formData.client_id}
                         onChange={handleChange}
                         style={{ width: "100%", padding: "8px", border: "1px solid #ccc", borderRadius: "4px" }}
                     >
                         <option value="">-- Select Client --</option>
                         {clients?.map((client) => (
-                            <option key={client.client_id} value={client.client_id}>
-                                {client.first_name} {client.last_name} ({client.service_type})
+                            // The value here uses client.id because the source array is from client_staging
+                            <option key={client.id} value={client.id}>
+                                {client.first_name} {client.last_name} ({client.client_ailment_type || 'N/A'})
                             </option>
                         ))}
                     </select>

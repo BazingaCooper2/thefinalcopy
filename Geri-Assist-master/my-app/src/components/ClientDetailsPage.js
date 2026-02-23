@@ -205,15 +205,20 @@ export default function ClientDetailsPage() {
   };
 
   // --- Filtering ---
-  const filteredClients = clients.filter(client => {
-    const matchesSearch =
-      client.client_id.toString().includes(search.trim()) ||
-      client.first_name?.toLowerCase().includes(search.toLowerCase()) ||
-      client.last_name?.toLowerCase().includes(search.toLowerCase());
-    const matchesLocation = locationFilter === "" ||
-      client.service_type?.toLowerCase().includes(locationFilter.toLowerCase());
-    return matchesSearch && matchesLocation;
-  });
+  // Inside ClientDetailsPage function
+const filteredClients = clients.filter(client => {
+  const matchesSearch =
+    // Use 'id' instead of 'client_id'
+    client.id?.toString().includes(search.trim()) || 
+    client.first_name?.toLowerCase().includes(search.toLowerCase()) ||
+    client.last_name?.toLowerCase().includes(search.toLowerCase());
+
+  const matchesLocation = locationFilter === "" ||
+    // 'address' or 'city' are more reliable in client_staging than 'service_type'
+    (client.address || client.city)?.toLowerCase().includes(locationFilter.toLowerCase());
+
+  return matchesSearch && matchesLocation;
+});
 
   const locations = [
     "85 Neeve",
@@ -383,32 +388,28 @@ export default function ClientDetailsPage() {
           {/* Grid */}
           <div className="row g-4">
             {filteredClients.map(client => (
-              <div key={client.client_id} className="col-md-6 col-lg-4 col-xl-3">
-                <div
-                  className="card h-100 border-0 shadow-sm hover-shadow transition-all"
-                  style={{ borderRadius: '1rem', cursor: 'pointer' }}
-                  onClick={() => {
-                    setSelectedClient(client);
-                    fetchClientDetails(client.client_id);
-                  }}
-                >
-                  <div className="card-body text-center p-4">
-                    <img
-                      src={"https://i.ibb.co/twnJ1rqx/user.png"}
-                      alt="Client"
-                      className="rounded-circle mb-3 shadow-sm"
-                      style={{ width: "80px", height: "80px", objectFit: "cover" }}
-                    />
-                    <h5 className="fw-bold mb-1">{client.name || `${client.first_name} ${client.last_name}`}</h5>
-                    <p className="text-muted small mb-2">ID: {client.client_id}</p>
-                    <span className="badge bg-light text-dark border">
-                      <i className="bi bi-geo-alt me-1"></i>
-                      {client.address_line1 || client.city || 'Unknown Location'}
-                    </span>
+                <div key={client.id} className="col-md-6 col-lg-4 col-xl-3"> {/* Changed key to client.id */}
+                  <div
+                    className="card h-100 border-0 shadow-sm"
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => {
+                      setSelectedClient(client);
+                      fetchClientDetails(client.id); // Changed parameter to client.id
+                    }}
+                  >
+                    <div className="card-body text-center p-4">
+                      {/* ... image code ... */}
+                      <h5 className="fw-bold mb-1">{client.name || `${client.first_name} ${client.last_name}`}</h5>
+                      <p className="text-muted small mb-2">ID: {client.id}</p> {/* Changed from client_id to id */}
+                      <span className="badge bg-light text-dark border">
+                        <i className="bi bi-geo-alt me-1"></i>
+                        {/* client_staging uses 'address' instead of 'address_line1' */}
+                        {client.address || client.city || 'Unknown Location'} 
+                      </span>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              ))}
             {filteredClients.length === 0 && (
               <div className="text-center py-5 w-100">
                 <p className="text-muted">No clients found matching your criteria.</p>
@@ -938,101 +939,57 @@ function EmergencyContactsTab({ client, emergencyContacts, setEmergencyContacts,
 
 // 4. Schedule Tab (Unchanged)
 function ScheduleTab({ client }) {
-  const [data, setData] = useState({ weeks: [], employees: [] });
+  const [shifts, setShifts] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // We still fetch by location to get the relevant calendar headers/weeks
-  const serviceLocation = client.service_type || "Willow Place";
-
   useEffect(() => {
-    const loadSchedule = async () => {
+    const loadBiWeekly = async () => {
       try {
         setLoading(true);
-        // 1. Fetch the master schedule structure for headers (weeks)
-        const masterRes = await fetchServiceSchedule(serviceLocation);
-        
-        // 2. Fetch specific shifts from your new client-specific endpoint
-        const shiftRes = await axios.get(`${API_URL}/get_client_shifts?client_id=${client.client_id}`);
-        const clientShifts = shiftRes.data.shifts || [];
-
-        // Helper to extract HH:mm from SQL strings like "2026-02-11 06:30:00" or ISO "T" format
-        const formatTime = (t) => {
-          if (!t) return "";
-          const parts = t.includes('T') ? t.split('T')[1] : (t.includes(' ') ? t.split(' ')[1] : t);
-          return parts ? parts.substring(0, 5) : t.substring(0, 5);
-        };
-
-        // 3. Transform client shifts into the "Employee" row format your grid requires
-        const transformedData = {
-          weeks: masterRes.weeks || [],
-          employees: [
-            {
-              id: client.client_id,
-              name: `${client.first_name} ${client.last_name}`,
-              shifts: clientShifts.map(s => ({
-                id: s.shift_id,
-                date: s.date,
-                // Combines start and end into "HH:mm-HH:mm" format for the grid blocks
-                time: `${formatTime(s.shift_start_time)}-${formatTime(s.shift_end_time)}`,
-                // Maps your DB status to the UI type for color coding
-                type: s.shift_status?.toLowerCase() === 'completed' ? 'regular' : 'open',
-                training: s.shift_type === 'training'
-              }))
-            }
-          ]
-        };
-
-        setData(transformedData);
+        // Use the new simplified endpoint
+        const res = await axios.get(`${API_URL}/get_client_biweekly_schedule?client_id=${client.id}`);
+        setShifts(res.data.shifts || []);
       } catch (err) {
-        console.error("Failed to fetch client schedule:", err);
+        console.error("Schedule error:", err);
       } finally {
         setLoading(false);
       }
     };
+    loadBiWeekly();
+  }, [client.id]);
 
-    if (client.client_id) {
-      loadSchedule();
-    }
-  }, [client.client_id, serviceLocation]);
-
-  if (loading) return (
-    <div className="text-center py-5">
-      <div className="spinner-border text-primary" role="status"></div>
-      <p className="mt-2 text-muted">Loading schedule...</p>
-    </div>
-  );
+  if (loading) return <div>Loading 14-day schedule...</div>;
 
   return (
-    <div className="schedule-container animate-fadeIn">
-      <div className="alert alert-info d-flex align-items-center mb-3">
-        <i className="bi bi-info-circle-fill me-2"></i>
-        <div>
-          Showing individual schedule for <strong>{client.first_name} {client.last_name}</strong> at {serviceLocation}.
-          <span className="ms-2 text-muted small">(Read-only View)</span>
-        </div>
-      </div>
-
-      <div className="border rounded shadow-sm bg-white p-2 overflow-auto">
-        {data.employees[0]?.shifts.length > 0 ? (
-          <ScheduleGrid
-            service={serviceLocation}
-            data={data}
-            // Passing an empty function explicitly disables the edit modal trigger
-            onShiftClick={() => {}}
-          />
-        ) : (
-          <div className="text-center py-5">
-            <i className="bi bi-calendar-x text-muted fs-2"></i>
-            <p className="mt-2">No specific shifts found for this client in the shift database.</p>
-          </div>
-        )}
-      </div>
-
-      {/* Legend stays for clarity on what colors mean */}
-      <div className="schedule-legend mt-4 d-flex flex-wrap gap-2">
-          <div className="legend-item"><span className="legend-color regular">Completed</span></div>
-          <div className="legend-item"><span className="legend-color open">Scheduled</span></div>
-          <div className="legend-item"><span className="legend-color sick">Sick</span></div>
+    <div className="mt-3">
+      <h5 className="mb-3 text-secondary">Next 14 Days</h5>
+      <div className="table-responsive">
+        <table className="table table-hover border">
+          <thead className="table-light">
+            <tr>
+              <th>Date</th>
+              <th>Time</th>
+              <th>Staff Member</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {shifts.length > 0 ? shifts.map(s => (
+              <tr key={s.shift_id}>
+                <td>{new Date(s.date).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}</td>
+                <td>{s.shift_start_time.substring(11, 16)} - {s.shift_end_time.substring(11, 16)}</td>
+                <td><i className="bi bi-person me-2"></i>{s.staff_name}</td>
+                <td>
+                  <span className={`badge ${s.shift_status === 'Scheduled' ? 'bg-primary' : 'bg-success'}`}>
+                    {s.shift_status}
+                  </span>
+                </td>
+              </tr>
+            )) : (
+              <tr><td colSpan="4" className="text-center py-4">No visits scheduled for the next 2 weeks.</td></tr>
+            )}
+          </tbody>
+        </table>
       </div>
     </div>
   );
