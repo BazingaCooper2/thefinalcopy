@@ -120,9 +120,6 @@ export default function FLWLeaveRequest() {
             {/* Header */}
             <div className="mb-4">
                 <h2 className="mb-1">Request Leave</h2>
-                <p className="text-muted mb-0">
-                    Submit time-off requests for vacation, sick days, or personal leave
-                </p>
             </div>
 
             {/* Success Alert */}

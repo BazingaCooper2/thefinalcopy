@@ -210,7 +210,7 @@ useEffect(() => {
                         onClick={() => handleLeaveRequest(null)}
                     >
                         <i className="bi bi-calendar-x me-2"></i>
-                        Request Leave
+                        Update Leave
                     </button>
                 </div>
             </div>
@@ -238,7 +238,7 @@ useEffect(() => {
                 <div className="col-md-3">
                     <div className="dashboard-card card-cyan">
                         <div className="dashboard-card-value">{employees.filter(e => (e.status_label || e.status) === 'On Leave' || (e.status_label || e.status) === 'Sick').length}</div>
-                        <div className="dashboard-card-label">On Leave</div>
+                        <div className="dashboard-card-label">Visit Verification</div>
                     </div>
                 </div>
             </div>
@@ -292,7 +292,7 @@ useEffect(() => {
                 >
                     <option value="All">All</option>
                     <option value="Active">Active</option>
-                    <option value="Discarded">Discarded</option>
+                    <option value="Discarded">Terminated</option>
 
                 </select>
             </div>

@@ -171,7 +171,7 @@ export default function Tasks() {
                 <div>
                     <h2 className="fw-bold text-dark mb-1">
                         <i className="bi bi-clipboard-check me-2 text-primary"></i>
-                        Task Management
+                        New Task Management
                     </h2>
                     <p className="text-muted mb-0">Monitor tasks and assign new ones to employee shifts</p>
                 </div>
