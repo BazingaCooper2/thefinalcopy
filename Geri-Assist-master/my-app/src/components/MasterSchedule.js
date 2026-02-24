@@ -7,7 +7,7 @@ import API_URL from '../config/api';
 
 export default function MasterSchedule() {
     const [service, setService] = useState("85 Neeve");
-
+    const [isLoading, setIsLoading] = useState(false);
     // ✅ data must be an object, not an array
     const [data, setData] = useState({
         weeks: [],
@@ -22,13 +22,16 @@ export default function MasterSchedule() {
         if (!service) return;
 
         console.log("SERVICE RECEIVED IN APP:", service);
-
+        setIsLoading(true);
         fetchServiceSchedule(service)
             .then(res => {
                 console.log("API RESPONSE:", res);
                 setData(res);
             })
-            .catch(err => console.error("FETCH ERROR:", err));
+            .catch(err => console.error("FETCH ERROR:", err))
+            .finally(() => {
+                setIsLoading(false);
+                });
     }, [service]);
 
     const handleShiftClick = (shift, emp_id) => {
@@ -75,11 +78,18 @@ export default function MasterSchedule() {
             <ServiceSidebar onSelect={setService} />
 
             {/* ✅ clean render */}
-            <ScheduleGrid
-                service={service}
-                data={data}
-                onShiftClick={handleShiftClick}
-            />
+            {isLoading ? (
+                <div className="loading-spinner-container">
+                    <div className="spinner"></div>
+                    <p>Loading schedule...</p>
+                </div>
+            ) : (
+                <ScheduleGrid
+                    service={service}
+                    data={data}
+                    onShiftClick={handleShiftClick}
+                />
+            )}
 
             <div className="schedule-legend">
                 <div className="legend-item"><span className="legend-color vacation">Vacation</span></div>

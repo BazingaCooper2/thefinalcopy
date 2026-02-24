@@ -3097,7 +3097,7 @@ def client_generate_next_month_shifts():
         return jsonify({"error": str(e)}), 500
 
 
-ees/<int:emp_id>")
+@app.route("/employees/<int:emp_id>")
 def get_employee_with_id(emp_id):
     emp = supabase.table("employee_final").select("*").eq("emp_id", emp_id).execute()
     shift = supabase.table("shift").select("*").eq("emp_id", emp_id).execute()
@@ -3203,7 +3203,7 @@ def leave_processing(emp_id, leave_start_date, leave_end_date, leave_start_time,
         return not (s_end <= l_start or s_start >= l_end)
 
     # 1️⃣ Fetch all assigned shifts for this employee that are currently scheduled
-    assign@app.route("/employed_shifts = supabase.table("shift") \
+    assigned_shifts = supabase.table("shift") \
         .select("*") \
         .eq("emp_id", emp_id) \
         .eq("shift_status", "Scheduled") \
@@ -3952,11 +3952,11 @@ def masterSchedule(service: str):
         for emp in employees:
             emp_id = emp.get("emp_id")
             
-            # Fetch shifts and leaves within the 6-week window
-            shift_res = supabase.table("daily_shift").select("*").eq("emp_id", emp_id).gte("shift_date", dates[0].isoformat()).lte("shift_date", dates[-1].isoformat()).execute()
+            # 🚀 NEW: Fetch from employee_schedules instead of daily_shift
+            schedule_res = supabase.table("employee_schedules").select("*").eq("emp_id", emp_id).gte("shift_date", dates[0].isoformat()).lte("shift_date", dates[-1].isoformat()).execute()
             leave_res = supabase.table("leaves").select("*").eq("emp_id", emp_id).gte("leave_start_date", dates[0].isoformat()).lte("leave_end_date", dates[-1].isoformat()).execute()
             
-            shift_map = {s.get("shift_date"): s for s in (shift_res.data or [])}
+            schedule_map = {s.get("shift_date"): s for s in (schedule_res.data or [])}
             
             # 3. Process Leaves (Priority overlay)
             leave_map = {}
@@ -3972,6 +3972,8 @@ def masterSchedule(service: str):
 
             emp_calendar = []
             for d in dates:
+                d_iso = d.isoformat()
+                
                 # Check for Leave first
                 if d in leave_map:
                     l_val = leave_map[d].get("leave_type", "").lower()
@@ -3983,38 +3985,23 @@ def masterSchedule(service: str):
                     })
                     continue
 
-                # Check for regular Shifts
-                shift = shift_map.get(d.isoformat())
-                if not shift:
+                # Check for regular Schedule
+                sched = schedule_map.get(d_iso)
+                
+                # If no schedule exists for this date, mark as open
+                if not sched:
                     emp_calendar.append({"time": "", "type": "open", "training": False})
                     continue
 
-                # 4. Process Shift Codes (Day/Noon/Evening)
-                try:
-                    s_dt = flexible_parse(shift.get("shift_start_time"))
-                    e_dt = flexible_parse(shift.get("shift_end_time"))
-                    
-                    if not s_dt or not e_dt:
-                        time_code = ""
-                    elif decoded_service.lower() == "outreach":
-                        time_code = f"{s_dt.strftime('%H:%M')}-{e_dt.strftime('%H:%M')}"
-                    else:
-                        # Determine Shift Convention code
-                        noon = s_dt.replace(hour=12, minute=0, second=0)
-                        evening = s_dt.replace(hour=18, minute=0, second=0)
-                        code = "day" if e_dt <= noon else ("noon" if s_dt > noon and e_dt <= evening else "evening")
-                        
-                        # Safe dictionary lookup with a fallback
-                        conv = SHIFT_CONVENTIONS.get(decoded_service, {"day": "d", "noon": "n", "evening": "e"})
-                        time_code = conv.get(code, "?")
-                except Exception:
-                    time_code = "ERR"
+                # 🚀 NEW: Grab shift_code directly from DB (no more start/end time math!)
+                time_code = sched.get("shift_code", "")
 
                 emp_calendar.append({
-                    "id": shift.get("shift_id"),
+                    "id": sched.get("schedule_id"), # Using the new schedule_id primary key
                     "time": time_code,
-                    "type": SHIFT_TYPE_MAP.get(shift.get("shift_type", "open"), "flw-rtw"),
-                    "training": shift.get("training", False)
+                    "type": "flw-rtw", # Defaulting to flw-rtw for scheduled shifts
+                    "is_published": sched.get("is_published", False),
+                    "training": False 
                 })
 
             output_employees.append({
@@ -4046,88 +4033,65 @@ def update_master_shift():
         emp_id = data.get("emp_id")
         shift_type = data.get("shift_type")
         shift_date = data.get("shift_date")
-        start_time = data.get("shift_start_time")
-        end_time = data.get("shift_end_time")
         prev_type = data.get("type")
+        
+        # 🚀 NEW: Expecting shift_code from the frontend instead of start/end times
+        shift_code = data.get("shift_code")
+
+        # Kept as fallback for the leaves table, which might still require exact times
+        start_time = data.get("shift_start_time") or "00:00"
+        end_time = data.get("shift_end_time") or "23:59"
 
         if not emp_id or not shift_type or not shift_date:
             return jsonify({"error": "Missing required fields"}), 400
 
-        start_dt = f"{shift_date} {start_time}"
-        end_dt = f"{shift_date} {end_time}"
-
         DAILY_SHIFT_TYPES = {
-            "flw-rtw",
-            "flw-training",
-            "gil",
-            "float",
-            "open"
+            "flw-rtw", "flw-training", "gil", "float", "open"
         }
-
         LEAVE_TYPES = {
-            "leave",
-            "vacation",
-            "sick",
-            "bereavement",
-            "unavailable"
+            "leave", "vacation", "sick", "bereavement", "unavailable"
         }
 
-        if prev_type == "open":
-
-            # 🟢 DAILY SHIFT
-            if shift_type in DAILY_SHIFT_TYPES:
-                supabase.table("daily_shift").insert({
-                    "emp_id": emp_id,
-                    "shift_date": shift_date,
-                    "shift_start_time": f"{start_time.replace(' ','T')}Z",
-                    "shift_end_time": f"{end_time.replace(' ','T')}Z",
-                    "shift_type": shift_type
-                }).execute()
-
-            # 🔴 LEAVE
-            elif shift_type in LEAVE_TYPES:
-                supabase.table("leaves").insert({
-                    "emp_id": emp_id,
-                    "leave_start_date": shift_date,
-                    "leave_end_date": shift_date,
-                    "leave_start_time": start_time,
-                    "leave_end_time": end_time,
-                    "leave_type": shift_type
-                }).execute()
-        else:
-            supabase.table("daily_shift") \
+        # 1. CLEAN SLATE: If the slot wasn't empty before, wipe the existing records
+        # for this specific day to prevent duplicate data conflicts.
+        if prev_type != "open":
+            # Delete from new table
+            supabase.table("employee_schedules") \
                 .delete() \
                 .eq("emp_id", emp_id) \
                 .eq("shift_date", shift_date) \
                 .execute()
 
+            # Delete from leaves table
             supabase.table("leaves") \
                 .delete() \
                 .eq("emp_id", emp_id) \
                 .eq("leave_start_date", shift_date) \
                 .execute()
 
-            # Then insert updated version
-            if shift_type in LEAVE_TYPES:
-                supabase.table("leaves").insert({
-                    "emp_id": emp_id,
-                    "leave_start_date": shift_date,
-                    "leave_end_date": shift_date,
-                    "leave_start_time": start_time,
-                    "leave_end_time": end_time,
-                    "leave_type": shift_type
-                }).execute()
-            else:
-                supabase.table("daily_shift").insert({
-                    "emp_id": emp_id,
-                    "shift_date": shift_date,
-                    "shift_start_time": f"{start_time.replace(' ','T')}Z",
-                    "shift_end_time": f"{end_time.replace(' ','T')}Z",
-                    "shift_type": shift_type
-                }).execute()
+        # 2. INSERT NEW DATA: Route the data to the correct table
+        if shift_type in LEAVE_TYPES:
+            # Insert into Leaves
+            supabase.table("leaves").insert({
+                "emp_id": emp_id,
+                "leave_start_date": shift_date,
+                "leave_end_date": shift_date,
+                "leave_start_time": start_time,
+                "leave_end_time": end_time,
+                "leave_type": shift_type
+            }).execute()
 
-            return jsonify({"message": "Existing shift updated"}), 200
-        
+        elif shift_type in DAILY_SHIFT_TYPES and shift_type != "open":
+            # Insert into the new employee_schedules table
+            if not shift_code:
+                return jsonify({"error": "shift_code is required for scheduling"}), 400
+
+            supabase.table("employee_schedules").insert({
+                "emp_id": emp_id,
+                "shift_date": shift_date,
+                "shift_code": shift_code,
+                "is_published": False # Defaulting to false as per your schema
+            }).execute()
 
         return jsonify({"message": "Shift updated successfully"}), 200
 

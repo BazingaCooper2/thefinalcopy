@@ -1,3 +1,5 @@
+import React from "react";
+
 const shiftMap = {
     "85 Neeve": { d: "d*", e: "e*", n: "n*" },
     "87 Neeve": { d: "d", e: "e", n: "n" },
@@ -6,13 +8,13 @@ const shiftMap = {
 
 export default function ShiftCell({ shift, service, emp_id, onShiftClick }) {
     let label = shift.time;
-
+    
     if (service !== "Outreach" && shift.time) {
-        label = shiftMap[service]?.[shift.time] || "";
+        label = shiftMap[service]?.[shift.time] || shift.time;
     }
 
     return (
-        <td
+        <div
             className={`master-shift-cell ${shift.type}`}
             title={shift.training ? "Training day" : ""}
             onClick={() => onShiftClick && onShiftClick({ ...shift, emp_id: emp_id })}
@@ -23,6 +25,6 @@ export default function ShiftCell({ shift, service, emp_id, onShiftClick }) {
             {shift.training && (
                 <span className="training-badge">T</span>
             )}
-        </td>
+        </div>
     );
 }
